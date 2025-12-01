@@ -66,14 +66,19 @@ end
 
 println("Starting weighting potential simulation ....")
 
+
 calculate_weighting_potential!(sim, 1,
     max_n_iterations=-1,
-    convergence_limit=1e-10,   # PARAMETRO DA CAMBIARE
+    convergence_limit=5e-7,   # PARAMETRO DA CAMBIARE
     refinement_limits=refinement_limits,
     depletion_handling=true,
     max_tick_distance=max_tick_distance,
     grid=grid = Grid(sim, for_weighting_potential=true,
         max_tick_distance=max_tick_distance))
+
+
+
+
 
 
 
@@ -110,7 +115,7 @@ w = plot(
 
 wp1 = plot(sim.weighting_potentials[1], contours_equal_potential=true,
     linecolor=:white, levels=5)
-plot!(sim.detector, st=:slice, φ=0)
+plot!(sim.detector, st=:slice, φ=0, legend=false)
 
 #  calcolo il potenziale solo per il 1 elettrodo (quello problematico)
-savefig(wp1, "plots/0.1mm_10-9_convergence_limit.png")
+savefig(wp1, "plots/0.1mm_5e-7_convergence_limit.png")
