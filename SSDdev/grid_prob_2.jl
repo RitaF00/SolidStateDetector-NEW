@@ -67,14 +67,41 @@ end
 println("Starting weighting potential simulation ....")
 
 
-calculate_weighting_potential!(sim, 1,
-    max_n_iterations=-1,
-    convergence_limit=5e-7,   # PARAMETRO DA CAMBIARE
-    refinement_limits=refinement_limits,
-    depletion_handling=true,
-    max_tick_distance=max_tick_distance,
-    grid=grid = Grid(sim, for_weighting_potential=true,
-        max_tick_distance=max_tick_distance))
+# Lista dei convergence limit da testare
+convergence_limits = [1e-7, 9e-8, 8e-8, 7e-8, 6e-8, 5e-8, 4e-8, 3e-8, 2e-8, 1e-8]
+
+# Creiamo una figura vuota con 2 righe e 5 colonne
+n_rows, n_cols = 2, 5
+plot_list = []
+
+for cl in convergence_limits
+    println("Simulating weighting potential with convergence_limit = $cl")
+
+    # Generiamo una nuova grid per ogni calcolo (puoi eventualmente riusare la stessa)
+    grid_wp = Grid(sim, for_weighting_potential=true, max_tick_distance=max_tick_distance)
+
+    # Calcolo del weighting potential solo per il primo elettrodo
+    calculate_weighting_potential!(sim, 1,
+        max_n_iterations=-1,
+        convergence_limit=cl,
+        refinement_limits=refinement_limits,
+        depletion_handling=true,
+        max_tick_distance=max_tick_distance,
+        grid=grid_wp)
+
+    # Creiamo il plot
+    p = plot(sim.weighting_potentials[1],
+        contours_equal_potential=true,
+        linecolor=:white, levels=5,
+        title="cl = $(cl)")
+    plot!(sim.detector, st=:slice, φ=0, legend=false)
+
+    push!(plot_list, p)
+end
+
+# Creiamo un'unica figura con layout 2x5
+final_plot = plot(plot_list..., layout=(n_rows, n_cols), size=(2000, 800))
+savefig(final_plot, "plots/convergences/weighting_potentials_convergence_comparison.png")
 
 
 
@@ -111,11 +138,12 @@ w = plot(
     wp1, wp2,
     size=(900, 700), layout=(1, 2)
 )
-"""
+
 
 wp1 = plot(sim.weighting_potentials[1], contours_equal_potential=true,
     linecolor=:white, levels=5)
 plot!(sim.detector, st=:slice, φ=0, legend=false)
 
 #  calcolo il potenziale solo per il 1 elettrodo (quello problematico)
-savefig(wp1, "plots/0.1mm_5e-7_convergence_limit.png")
+savefig(wp1, "plots/convergences/0.1mm_5e-8_convergence_limit.png")
+"""
