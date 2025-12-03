@@ -28,7 +28,7 @@ save_sim_path = "saved_simulation/sim05"
 
 if isfile(save_sim_path) && !recalculate
     println("⚡ Upoload simulation saved in : $save_sim_path")
-    ssd_read(save_sim_path, Simulation)
+    sim05 = ssd_read(save_sim_path, Simulation)
 
 else
     println("🔧 New simulation for the electric potential...")
@@ -40,13 +40,13 @@ else
 
     # ATTENZIONE  A VEDERE SE IL POTENZIALE E' DEPLETED O NO
     calculate_electric_potential!(sim05,
-        refinement_limits=missing,
+        refinement_limits=refinement_limits,
         verbose=false, #  boolean in the output is produced or not
         depletion_handling=false,  # se true : motiplica epsilon_r per un fattore f nelle regioni non svuotate
         grid=Grid(sim05, max_tick_distance=max_tick_distance))
 
     println("💾 Saving simulation in $save_sim_path")
-    ssd_write(save_sim_path, sim02)
+    ssd_write(save_sim_path, sim05)
 end
 
 
@@ -62,8 +62,9 @@ savefig(final_plot, "plots/epot_problem/0.05mm_grid.png")
 
 
 #--------------------- grid 0.02 ------------------
-println("Eletric potential for grid $max_tick_distance")
 
+max_tick_distance = 0.02u"mm"
+println("Eletric potential for grid $max_tick_distance")
 # true  → ricalcola sempre e sovrascrivi
 # false → usa il file salvato (se esiste)
 recalculate = false   # <<<<<<<< CAMBIA QUI
@@ -71,7 +72,7 @@ save_sim_path = "saved_simulation/sim02"
 
 if isfile(save_sim_path) && !recalculate
     println("⚡ Upoload simulation saved in : $save_sim_path")
-    ssd_read(save_sim_path, Simulation)
+    sim02 = ssd_read(save_sim_path, Simulation)
 
 else
     println("🔧 New simulation for the electric potential...")
@@ -83,7 +84,7 @@ else
 
     # ATTENZIONE  A VEDERE SE IL POTENZIALE E' DEPLETED O NO
     calculate_electric_potential!(sim02,
-        refinement_limits=missing,
+        refinement_limits=refinement_limits,
         verbose=false, #  boolean in the output is produced or not
         depletion_handling=false,  # se true : motiplica epsilon_r per un fattore f nelle regioni non svuotate
         grid=Grid(sim02, max_tick_distance=max_tick_distance))

@@ -266,7 +266,6 @@ function Grid(sim::Simulation{T,Cylindrical};
     Stessa cosa per φ e z
     """
 
-    println("Entro in Grid")
     # qui si prendono i punti importanti del detector basandosi sulla sua geometria
     samples::Vector{CylindricalPoint{T}} = sample(det, Cylindrical)
 
@@ -275,10 +274,9 @@ function Grid(sim::Simulation{T,Cylindrical};
     important_φ_ticks::Vector{T} = map(p -> p.φ, samples)
     important_z_ticks::Vector{T} = map(p -> p.z, samples)
 
-    println("vediamo come va")
     # aggiunta al secondo ordine dei thick solo se for_weighting_potential è true
     second_order_imp_ticks = if for_weighting_potential
-        println("weighting potential")
+        println("Second order tick fro weitghinig potential calculation")
         # calcolo dei thick dove il campo elettrico è forte
         # dice : se il potenziale elettrico è già calcolato, trova i punti dove il gradiente del potenziale è grande : dove il campo è ripido serve una griglia più grande 
         # la funzione restituisce 3 vettori di thick (r, φ, z)
@@ -290,7 +288,6 @@ function Grid(sim::Simulation{T,Cylindrical};
         # uniore dei tick
         vcat.(strong_electric_field_ticks, surface_of_depleted_volume_ticks)
     else # se ho il potenzial elettrico
-        println("electric potential")
         (T[], T[], T[])
     end
 
