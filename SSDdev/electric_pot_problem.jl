@@ -33,7 +33,7 @@ if isfile(save_sim_path) && !recalculate
 else
     println("🔧 New simulation for the electric potential...")
 
-    sim05 = Simulation(SSD_examples[:InvertedCoax])
+    sim05 = Simulation(SSD_examples[:IVCIlayer])
     sim05.detector = SolidStateDetector(sim05.detector, contact_id=2, contact_potential=V_bias)
     grid = Grid(sim05, max_tick_distance=max_tick_distance)
 

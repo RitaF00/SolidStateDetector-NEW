@@ -292,7 +292,7 @@ function Grid(sim::Simulation{T,Cylindrical};
     end
 
 
-    # gestiste max_tick_distance se non viene passato dall'user
+
     world_r_mid = (world.intervals[1].right + world.intervals[1].left) / 2
     if for_weighting_potential && world_Δφ > 0
         world_φ_int = SSDInterval{T,:closed,:open,:periodic,:periodic}(0, 2π)
@@ -300,7 +300,7 @@ function Grid(sim::Simulation{T,Cylindrical};
     else
         world_φ_int = world.intervals[2]
     end
-
+    # gestiste max_tick_distance se non viene passato dall'user
     max_distance_z = T(world_Δz / 4)
     max_distance_φ = T(world_Δφ / 4)
     max_distance_r = T(world_Δr / 4)
@@ -333,6 +333,7 @@ function Grid(sim::Simulation{T,Cylindrical};
     imp2order_r_ticks = merge_close_ticks(second_order_imp_ticks[1], min_diff=world_Δs[1] / 20)               # pulisce i tick di secondo ordine usando come soglia world_Δs[1]/20
     important_r_ticks = merge_second_order_important_ticks(important_r_ticks, imp2order_r_ticks, min_diff=world_Δs[1] / 20) # integra i tick di 2° ordine nella lista principale ma rispettando una distanza minima (min_diff) per evitare eccessiva concentrazione; tipicamente inserisce solo quelli che non sono troppo vicini ad altri tick.
     important_r_ticks = initialize_axis_ticks(important_r_ticks; max_ratio=T(max_distance_ratio))             # costruisce una prima versione dei tick applicando vincoli sul rapporto massimo tra intervalli consecutivi
+    # qui entra max_tick_distamnce
     important_r_ticks = fill_up_ticks(important_r_ticks, max_distance_r)                                      # aggiunge tick intermedi se qualche intervallo è più grande del max_distance_r impostato — serve a garantire la massima separazione consentita.
 
     # stessa cosa costruendo i tick importanti per z
@@ -664,6 +665,8 @@ function Grid(sim::Simulation{T,Cartesian};
     important_z_ticks = merge_second_order_important_ticks(important_z_ticks, imp2order_z_ticks, min_diff=world_Δs[3] / 20)
     important_z_ticks = initialize_axis_ticks(important_z_ticks; max_ratio=T(max_distance_ratio))
     important_z_ticks = fill_up_ticks(important_z_ticks, max_distance_z)
+
+    # dopo il fill e stack, i miei nuovi punti della griglia sono sia quelli importanti ma anche quelli aggiunti con tick_max e
 
     # x
     L, R, BL, BR = get_boundary_types(world.intervals[1])
@@ -1279,6 +1282,7 @@ function _calculate_potential!(sim::Simulation{T,CS}, potential_type::UnionAll, 
                     paint_contacts=paint_contacts,
                     sor_consts=is_last_ref ? T(1) : sor_consts)
             end
+            nothing
         end
     end
 

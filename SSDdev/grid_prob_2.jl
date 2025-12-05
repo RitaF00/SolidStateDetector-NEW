@@ -68,10 +68,10 @@ println("Starting weighting potential simulation ....")
 
 
 # Lista dei convergence limit da testare
-convergence_limits = [1.9e-8, 1.8e-8, 1.7e-8, 1.6e-8, 1.5e-8, 1.4e-8, 1.3e-8, 1.2e-8, 1.1e-8, 1e-8]
+convergence_limits = [1e-7]
 
 # Creiamo una figura vuota con 2 righe e 5 colonne
-n_rows, n_cols = 2, 5
+n_rows, n_cols = 1, 1
 plot_list = []
 
 for cl in convergence_limits
@@ -82,7 +82,7 @@ for cl in convergence_limits
 
     # Calcolo del weighting potential solo per il primo elettrodo
     calculate_weighting_potential!(sim, 1,
-        max_n_iterations=-1,
+        max_n_iterations=-1,  # non faccio continuaare all'infinito
         convergence_limit=cl,
         refinement_limits=refinement_limits,
         depletion_handling=true,
@@ -101,7 +101,7 @@ end
 
 # Creiamo un'unica figura con layout 2x5
 final_plot = plot(plot_list..., layout=(n_rows, n_cols), size=(2000, 800))
-savefig(final_plot, "plots/convergences/weighting_potentials_convergence_comparison_2e8_1e8.png")
+savefig(final_plot, "plots/convergences/wp_converg_compar_prova.png")
 
 
 
