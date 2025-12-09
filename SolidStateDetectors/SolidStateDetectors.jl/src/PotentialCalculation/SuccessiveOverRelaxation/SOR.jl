@@ -52,6 +52,25 @@ Thus, there cannot be local extrema.
     If a fixed charge impurity is present, e.g. due to a charged passivated surface,
     this handling is probably not valid anymore as the potential between a 
     `p+`-contact towards an `n+`-contact is not required to change monotonically anymore.
+
+
+    Gestisce la situazione in cui un punto non può essere pienamente depleto perché il nuovo potenziale violerebbe la monotonicità richiesta (nessun estremo locale tra p+ e n+).
+
+Logica:
+
+Calcola vmin e vmax dei 6 vicini.
+
+Se il nuovo potenziale proposto sta fuori da [𝑣min⁡,𝑣max⁡]] → non può essere fisicamente corretto.
+
+Riduce imp_scale ∈ [0,1] per “scalare” la carica efficace 𝑞eff del punto.
+
+Aggiorna il potenziale correggendolo verso un valore fisicamente valido.
+
+Serve per simulare la transizione tra:
+
+regione completamente depleta → imp_scale = 1
+
+regione parzialmente depleta → imp_scale < 1
     
 """
 @inline @fastmath function handle_depletion(
@@ -81,6 +100,12 @@ Thus, there cannot be local extrema.
     
     new_potential, imp_scale
 end
+
+
+"""
+Qui si aplica la SOR
+
+"""
 
 @inline function apply_over_relaxation(new_potential::T, old_potential::T, sor_const::T)::T where {T}
     new_potential -= old_potential

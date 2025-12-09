@@ -87,7 +87,7 @@ function _update_till_convergence!(pcs::PotentialCalculationSetup{T,S,3},
     if stop_reason === nothing
         if c <= c_limit
             stop_reason = :converged
-            println("🟢 STOP: convergence reached ( c <= c_limit).")
+            println("🟢 STOP: convergence reached (outside c <= c_limit).")
         elseif max_n_iterations != -1 && n_performed_iterations >= max_n_iterations
             stop_reason = :max_iterations
             println("⛔ STOP: reached maximum iteration number (post-check).")

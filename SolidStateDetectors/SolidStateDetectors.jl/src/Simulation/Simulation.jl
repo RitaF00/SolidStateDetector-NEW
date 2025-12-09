@@ -1249,6 +1249,7 @@ function _calculate_potential!(sim::Simulation{T,CS}, potential_type::UnionAll, 
             # However, when already close to the final state, its better to 
             # to switch it off (sor_const = 1)
             ref_limits = T.(_extend_refinement_limits(refinement_limits[iref]))
+            println("Refiement value $(refinement_limits[iref])")
             if isEP
                 max_diffs = if iszero(bias_voltage)
                     abs.(ref_limits .* (extrema(sim.electric_potential.data) |> e -> e[2] - e[1]))
