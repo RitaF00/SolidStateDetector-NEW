@@ -14,7 +14,7 @@ using LegendHDF5IO
 gr()
 
 max_tick_distance = 0.1u"mm"
-refinement_limits = [0.2, 0.1, 0.05]
+refinement_limits = [0.2, 0.1, 0.05, 0.02]
 save_sim_path = "saved_simulation/sim.h5"
 
 
@@ -69,29 +69,32 @@ println("Starting weighting potential simulation ....")
 
 # Lista dei convergence limit da testare
 convergence_limits = [1e-7]
+n_checks = [500, 1000,
+    5000, 10000,
+    20000]
 
 # Creiamo una figura vuota con 2 righe e 5 colonne
-n_rows, n_cols = 1, 1
+n_rows, n_cols = 1, 5
 plot_list = []
 
-for cl in convergence_limits
-    println("Simulating weighting potential with convergence_limit = $cl")
+for n_check in n_checks
+    println("Simulating weighting potential with number iteration bewteen checks = $n_check")
 
     # Calcolo del weighting potential solo per il primo elettrodo
     calculate_weighting_potential!(sim, 1,
-        max_n_iterations=-1,  # non faccio continuaare all'infinito
-        convergence_limit=cl,
+        max_n_iterations=-1,
+        convergence_limit=1e-7,
         refinement_limits=refinement_limits,
         depletion_handling=true,
         max_tick_distance=max_tick_distance,
-        n_iterations_between_checks=30000,
+        n_iterations_between_checks=n_check,
         grid=Grid(sim, for_weighting_potential=true, max_tick_distance=max_tick_distance))
 
     # Creiamo il plot
     p = plot(sim.weighting_potentials[1],
         contours_equal_potential=true,
         linecolor=:white, levels=5,
-        title="cl = $(cl)")
+        title="number iteration bewteen checks = $(n_check)")
     plot!(sim.detector, st=:slice, φ=0, legend=false)
 
     push!(plot_list, p)
@@ -99,7 +102,7 @@ end
 
 # Creiamo un'unica figura con layout 2x5
 final_plot = plot(plot_list..., layout=(n_rows, n_cols), size=(2000, 800))
-savefig(final_plot, "plots/update_convergence_plot/30_000_bewtween_checks_1e-7_only_no_0.01.png")
+savefig(final_plot, "plots/update_convergence_plot/varying_n_checks.png")
 
 
 
