@@ -26,27 +26,20 @@ calculate_electric_potential!(sim,
     grid=Grid(sim, max_tick_distance=max_tick))
 
 
-for contact in sim.detector.contacts
-    calculate_weighting_potential!(sim, contact.id,
-        refinement_limits=refinement_limits,
-        verbose=false,
-        depletion_handling=true,
-        grid=Grid(sim, for_weighting_potential=true, max_tick_distance=max_tick))
-end
+calculate_weighting_potential!(sim, 1,
+    refinement_limits=refinement_limits,
+    verbose=false,
+    depletion_handling=true,
+    grid=Grid(sim, for_weighting_potential=true, max_tick_distance=max_tick))
 
 
-wp1 = plot(sim.weighting_potentials[1], contours_equal_potential=true,
+
+p = plot(sim.weighting_potentials[1],
+    contours_equal_potential=true,
     linecolor=:white, levels=5)
-plot!(sim.detector, st=:slice, φ=0)
-wp2 = plot(sim.weighting_potentials[2], contours_equal_potential=true,
-    linecolor=:white, levels=5)
-plot!(sim.detector, st=:slice, φ=0)
-w = plot(
-    wp1, wp2,
-    size=(900, 700), layout=(1, 2)
-)
+plot!(sim.detector, st=:slice, φ=0, legend=false)
 
-savefig(w, "plots/no_2_order_grid/0.1mm_felix.png")
+savefig(p, "plots/initial_plot.png")
 
 #=
 Ep = plot(
