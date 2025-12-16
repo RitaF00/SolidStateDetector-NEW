@@ -68,10 +68,12 @@ println("Starting weighting potential simulation ....")
 
 
 # Lista dei convergence limit da testare
-n_checks = [500, 1000, 5000, 10000, 20000, 40000, 50000, 60000]
+n_checks = [5000, 5500, 6000, 6500,
+    7000, 7500, 8000, 8500,
+    9000, 9500]
 
 # Creiamo una figura vuota con 2 righe e 5 colonne
-n_rows, n_cols = 2, 4
+n_rows, n_cols = 2, 5
 plot_list = []
 
 for n_check in n_checks
@@ -99,7 +101,7 @@ end
 
 # Creiamo un'unica figura con layout 2x5
 final_plot = plot(plot_list..., layout=(n_rows, n_cols), size=(2000, 800))
-savefig(final_plot, "plots/update_convergence_plot/con_lim_5e-8.png")
+savefig(final_plot, "plots/update_convergence_plot/con_lim_5e-8_5000_9500.png")
 
 
 
