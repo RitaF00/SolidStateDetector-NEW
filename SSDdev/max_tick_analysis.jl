@@ -15,7 +15,8 @@ gr()
 #------------ definizione dei parametri ------
 
 max_tick_distance = 0.5u"mm"
-refinement_limits = [0.2, 0.1, 0.05, 0.02]
+#refinement_limits = [0.2, 0.1, 0.05, 0.02]
+refinement_limits = [0.2, 0.1]
 save_sim_path = "saved_simulation/sim.h5"
 
 # ------------------------
@@ -80,9 +81,11 @@ for max_tick_distance in max_tick_distance_array
     plot!(sim.detector, st=:slice, φ=0, legend=false)
 
     push!(plot_list, p)
-
 end
+
+
 final_plot = plot(plot_list..., layout=(n_rows, n_cols), size=(2000, 800))
-savefig(final_plot, "plots/max_tick-analysis/different_max_tick.png")
+
+savefig(final_plot, "plots/max_tick-analysis/02_01.png")
 
 

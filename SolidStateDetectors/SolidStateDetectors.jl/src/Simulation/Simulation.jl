@@ -1,8 +1,4 @@
 abstract type AbstractSimulation{T<:SSDFloat} end
-"""
-SERVE PER TRAFORMARE UN FILE DI TESTO IN UN OGGETTO STRUTTURATO CON CUI SI PUO' FARE
-"""
-
 
 """
     mutable struct Simulation{T <: SSDFloat, CS <: AbstractCoordinateSystem} <: AbstractSimulation{T}
@@ -13,7 +9,7 @@ Collection of all parts of a simulation of a [`SolidStateDetector`](@ref).
 * `T`: Precision type.
 * `CS`: Coordinate system (`Cartesian` or `Cylindrical`).
 
-## Fields                                  # è un file di config (file di testo)  [yaml]
+## Fields 
 * `config_dict::AbstractDict`: Dictionary (parsed configuration file) which initialized the simulation.
 * `input_units::NamedTuple`: Units with which the `config_dict` should be parsed.
 * `medium::NamedTuple`: Medium of the world.
@@ -28,8 +24,6 @@ Collection of all parts of a simulation of a [`SolidStateDetector`](@ref).
 * `weighting_potentials::Vector{Any}`: The [`WeightingPotential`](@ref) for each [`Contact`](@ref) of the `detector` in the simulation.
 * `electric_field::Union{ElectricField{T}, Missing}`: The [`ElectricField`](@ref) of the simulation.
 """
-
-# mutable structure : i campi sono modificabili durante la simulazione 
 mutable struct Simulation{T<:SSDFloat,CS<:AbstractCoordinateSystem} <: AbstractSimulation{T}
     config_dict::AbstractDict
     input_units::NamedTuple
@@ -46,11 +40,10 @@ mutable struct Simulation{T<:SSDFloat,CS<:AbstractCoordinateSystem} <: AbstractS
     electric_field::Union{ElectricField{T},Missing}
 end
 
-# è il costruttote: crea una simulazione VUOTA 
 function Simulation{T,CS}() where {T<:SSDFloat,CS<:AbstractCoordinateSystem}
     Simulation{T,CS}(
-        Dict(),  # nessuna configurazione
-        default_unit_tuple(),  #unità di default
+        Dict(),
+        default_unit_tuple(),
         material_properties[materials["vacuum"]],
         missing,
         World(CS, (T(0), T(1), T(0), T(1), T(0), T(1))),
@@ -64,10 +57,6 @@ function Simulation{T,CS}() where {T<:SSDFloat,CS<:AbstractCoordinateSystem}
         missing
     )
 end
-
-# le precedenti ci danno las truttura completa che racchiude tutti gli elemnti necessari per eseguire una simulazione 
-
-
 
 get_precision_type(::Simulation{T}) where {T} = T
 get_coordinate_system(::Simulation{T,CS}) where {T,CS} = CS
@@ -217,7 +206,7 @@ end
     Grid(sim::Simulation{T, Cartesian}; kwargs...)
     Grid(sim::Simulation{T, Cylindrical}; kwargs...)
 
-Initializes a [`Grid`](@ref) based on the objects defined in a [`Simulation`](@ref).  [in Simulation prendo dal file o dal NamedTuple se il tipo di coordinate è cilindrico o cartesian]
+Initializes a [`Grid`](@ref) based on the objects defined in a [`Simulation`](@ref).
 
 The important points of all objects are sampled and added to the ticks of the grid.
 The grid initialization can be tuned using a set of keyword arguments listed below.
@@ -245,8 +234,6 @@ The grid initialization can be tuned using a set of keyword arguments listed bel
     an [`ElectricPotential`](@ref) if set to `true`, and of a [`WeightingPotential`](@ref)
     if set to `false`.
 """
-
-# FUNZIONE CORRETTA COORDINATE CILINDRICHE
 function Grid(sim::Simulation{T,Cylindrical};
     for_weighting_potential::Bool=false,
     max_tick_distance::Union{Missing,LengthQuantity,Tuple{LengthQuantity,AngleQuantity,LengthQuantity}}=missing,
@@ -257,50 +244,27 @@ function Grid(sim::Simulation{T,Cylindrical};
     world_Δs = width.(world.intervals)
     world_Δr, world_Δφ, world_Δz = world_Δs
 
-    """
-    samples è un vettore di punti cilindrici (CylindricalPoint{T}) che rappresentano posizioni importanti del detector, ognuno con coordinate (r, φ, z).
-    map(p -> p.r, samples) significa:
-    Per ogni punto p in samples
-    Prendi la sua coordinata r
-    Metti tutte le coordinate r in un vettore.
-    Stessa cosa per φ e z
-    """
-
-    # qui si prendono i punti importanti del detector basandosi sulla sua geometria
     samples::Vector{CylindricalPoint{T}} = sample(det, Cylindrical)
-
-    # estrazione delle coordinate cilindriche più importanti sui punti campionati 
     important_r_ticks::Vector{T} = map(p -> p.r, samples)
     important_φ_ticks::Vector{T} = map(p -> p.φ, samples)
     important_z_ticks::Vector{T} = map(p -> p.z, samples)
 
-    # aggiunta al secondo ordine dei thick solo se for_weighting_potential è true
     second_order_imp_ticks = if for_weighting_potential
-        println("Second order tick fro weitghinig potential calculation")
-        # calcolo dei thick dove il campo elettrico è forte
-        # dice : se il potenziale elettrico è già calcolato, trova i punti dove il gradiente del potenziale è grande : dove il campo è ripido serve una griglia più grande 
-        # la funzione restituisce 3 vettori di thick (r, φ, z)
         strong_electric_field_ticks = !ismissing(sim.electric_potential) ? get_ticks_at_positions_of_large_gradient(sim.electric_potential) : (T[], T[], T[])
-        # calcolo dei tick ai bordi dei volumi depleted
-        # Usa l’informazione dell’impurity scale (imp_scale) per identificare i bordi delle zone deplete dentro il rivelatore.
-        # In quei bordi il peso di carica e il campo variano bruscamente → serve raffinamento. Anche qui mi rerstituisce dei tick
         surface_of_depleted_volume_ticks = !ismissing(sim.imp_scale) ? get_ticks_at_positions_of_edge_of_depleted_volumes(sim.imp_scale) : (T[], T[], T[])
-        # uniore dei tick
         vcat.(strong_electric_field_ticks, surface_of_depleted_volume_ticks)
-    else # se ho il potenzial elettrico
+    else
         (T[], T[], T[])
     end
 
-
-
-    world_r_mid = (world.intervals[1].right + world.intervals[1].left) / 2
+    world_r_mid = mean(world.intervals[1])
     if for_weighting_potential && world_Δφ > 0
         world_φ_int = SSDInterval{T,:closed,:open,:periodic,:periodic}(0, 2π)
         world_Δφ = width(world_φ_int)
     else
         world_φ_int = world.intervals[2]
     end
-    # gestiste max_tick_distance se non viene passato dall'user
+
     max_distance_z = T(world_Δz / 4)
     max_distance_φ = T(world_Δφ / 4)
     max_distance_r = T(world_Δr / 4)
@@ -315,28 +279,21 @@ function Grid(sim::Simulation{T,Cylindrical};
         end
     end
 
-    # costruzione dei tick importanti in r
+    println("Default maximum tick distance: z = $(max_distance_z), r = $(max_distance_r), ϕ = $(max_distance_φ) ")
 
-    # aggiunge estremi del odminio radiale
     append!(important_r_ticks, endpoints(world.intervals[1])...)
-    # elmina i duplicati e riordina
     important_r_ticks = unique!(sort!(important_r_ticks))
-    # add_ticks_between_important_ticks è true: aggiunge i midpoints (i punti medi fra tick importanti consecutivi).
     if add_ticks_between_important_ticks
         important_r_ticks = sort!(vcat(important_r_ticks, StatsBase.midpoints(important_r_ticks)))
     end
-    iL = searchsortedfirst(important_r_ticks, world.intervals[1].left)   # scarta i punti fuori dal domminio
-    iR = searchsortedfirst(important_r_ticks, world.intervals[1].right)  # scarta i punti fuori dal domminio
-
-    important_r_ticks = unique(map(t -> isapprox(t, 0, atol=1e-12) ? zero(T) : t, important_r_ticks[iL:iR]))  # normalizza valori molto prossimi a zero a esattamente zero
-    important_r_ticks = merge_close_ticks(important_r_ticks)                                                  # fonde tick troppo prossimi (rimuove ridondanze numeriche)
-    imp2order_r_ticks = merge_close_ticks(second_order_imp_ticks[1], min_diff=world_Δs[1] / 20)               # pulisce i tick di secondo ordine usando come soglia world_Δs[1]/20
-    important_r_ticks = merge_second_order_important_ticks(important_r_ticks, imp2order_r_ticks, min_diff=world_Δs[1] / 20) # integra i tick di 2° ordine nella lista principale ma rispettando una distanza minima (min_diff) per evitare eccessiva concentrazione; tipicamente inserisce solo quelli che non sono troppo vicini ad altri tick.
-    important_r_ticks = initialize_axis_ticks(important_r_ticks; max_ratio=T(max_distance_ratio))             # costruisce una prima versione dei tick applicando vincoli sul rapporto massimo tra intervalli consecutivi
-    # qui entra max_tick_distamnce
-    important_r_ticks = fill_up_ticks(important_r_ticks, max_distance_r)                                      # aggiunge tick intermedi se qualche intervallo è più grande del max_distance_r impostato — serve a garantire la massima separazione consentita.
-
-    # stessa cosa costruendo i tick importanti per z
+    iL = searchsortedfirst(important_r_ticks, world.intervals[1].left)
+    iR = searchsortedfirst(important_r_ticks, world.intervals[1].right)
+    important_r_ticks = unique(map(t -> isapprox(t, 0, atol=1e-12) ? zero(T) : t, important_r_ticks[iL:iR]))
+    important_r_ticks = merge_close_ticks(important_r_ticks)
+    imp2order_r_ticks = merge_close_ticks(second_order_imp_ticks[1], min_diff=world_Δs[1] / 20)
+    important_r_ticks = merge_second_order_important_ticks(important_r_ticks, imp2order_r_ticks, min_diff=world_Δs[1] / 20)
+    important_r_ticks = initialize_axis_ticks(important_r_ticks; max_ratio=T(max_distance_ratio))
+    important_r_ticks = fill_up_ticks(important_r_ticks, max_distance_r)
 
     append!(important_z_ticks, endpoints(world.intervals[3])...)
     important_z_ticks = unique!(sort!(important_z_ticks))
@@ -352,9 +309,6 @@ function Grid(sim::Simulation{T,Cylindrical};
     important_z_ticks = initialize_axis_ticks(important_z_ticks; max_ratio=T(max_distance_ratio))
     important_z_ticks = fill_up_ticks(important_z_ticks, max_distance_z)
 
-
-    # stessa cosa costruendo i tick importanti per φ
-
     append!(important_φ_ticks, endpoints(world_φ_int)...)
     important_φ_ticks = unique!(sort!(important_φ_ticks))
     if add_ticks_between_important_ticks
@@ -369,18 +323,12 @@ function Grid(sim::Simulation{T,Cylindrical};
     important_φ_ticks = initialize_axis_ticks(important_φ_ticks; max_ratio=T(max_distance_ratio))
     important_φ_ticks = fill_up_ticks(important_φ_ticks, max_distance_φ)
 
-
-    #-------------------- costruzione degli assi ------------------------
-
     # r
-    # prende i bordi e le condizioni al contorno corrette 
     L, R, BL, BR = get_boundary_types(world.intervals[1])
     int_r = Interval{L,R,T}(endpoints(world.intervals[1])...)
-    # crea una sse discreto con i nuovi valori importanti 
     ax_r = even_tick_axis(DiscreteAxis{T,BL,BR}(int_r, important_r_ticks))
 
     # φ
-    # stessa cosa di r ma qui controllo anche tutte le possibili simmetrie che phi può avere
     L, R, BL, BR = get_boundary_types(world_φ_int)
     int_φ = Interval{L,R,T}(endpoints(world_φ_int)...)
     ax_φ = if int_φ.left == int_φ.right
@@ -408,181 +356,17 @@ function Grid(sim::Simulation{T,Cylindrical};
     end
 
     #z
-
-    # stessa cosa lungo z
     L, R, BL, BR = get_boundary_types(world.intervals[3])
     int_z = Interval{L,R,T}(endpoints(world.intervals[3])...)
     ax_z = even_tick_axis(DiscreteAxis{T,BL,BR}(int_z, important_z_ticks))
 
-    return CylindricalGrid{T}((ax_r, ax_φ, ax_z))
-end
 
-
-# qui provo a togliere il 2 refinement della griglia
-function Grid2(sim::Simulation{T,Cylindrical};
-    for_weighting_potential::Bool=false,
-    max_tick_distance::Union{Missing,LengthQuantity,Tuple{LengthQuantity,AngleQuantity,LengthQuantity}}=missing,
-    max_distance_ratio::Real=5,
-    add_ticks_between_important_ticks::Bool=true)::CylindricalGrid{T} where {T}
-    det = sim.detector
-    world = sim.world
-    world_Δs = width.(world.intervals)
-    world_Δr, world_Δφ, world_Δz = world_Δs
-
-    """
-    samples è un vettore di punti cilindrici (CylindricalPoint{T}) che rappresentano posizioni importanti del detector, ognuno con coordinate (r, φ, z).
-    map(p -> p.r, samples) significa:
-    Per ogni punto p in samples
-    Prendi la sua coordinata r
-    Metti tutte le coordinate r in un vettore.
-    Stessa cosa per φ e z
-    """
-
-    println("Entering in Grid")
-    # qui si prendono i punti importanti del detector basandosi sulla sua geometria
-    samples::Vector{CylindricalPoint{T}} = sample(det, Cylindrical)
-
-
-    # estrazione delle coordinate cilindriche più importanti sui punti campionati 
-    important_r_ticks::Vector{T} = map(p -> p.r, samples)
-    important_φ_ticks::Vector{T} = map(p -> p.φ, samples)
-    important_z_ticks::Vector{T} = map(p -> p.z, samples)
-
-    println("deleted 2 order tick grid ")
-    # aggiunta al secondo ordine dei thick solo se for_weighting_potential è true
-    second_order_imp_ticks = if for_weighting_potential
-        println("calculating weighted potential")
-        (T[], T[], T[])
-    else # se ho il potenzial elettrico
-        println("calculating electric potential")
-        (T[], T[], T[])
-    end
-
-
-    # gestiste max_tick_distance se non viene passato dall'user
-    world_r_mid = (world.intervals[1].right + world.intervals[1].left) / 2
-    if for_weighting_potential && world_Δφ > 0
-        world_φ_int = SSDInterval{T,:closed,:open,:periodic,:periodic}(0, 2π)
-        world_Δφ = width(world_φ_int)
-    else
-        world_φ_int = world.intervals[2]
-    end
-
-    max_distance_z = T(world_Δz / 4)
-    max_distance_φ = T(world_Δφ / 4)
-    max_distance_r = T(world_Δr / 4)
-    if !ismissing(max_tick_distance)
-        if max_tick_distance isa LengthQuantity
-            max_distance_z = max_distance_r = T(to_internal_units(max_tick_distance))
-            max_distance_φ = max_distance_z / world_r_mid
-        else #if max_tick_distance isa Tuple{LengthQuantity, AngleQuantity, LengthQuantity}
-            max_distance_r = T(to_internal_units(max_tick_distance[1]))
-            max_distance_φ = T(to_internal_units(max_tick_distance[2]))
-            max_distance_z = T(to_internal_units(max_tick_distance[3]))
-        end
-    end
-
-    # costruzione dei tick importanti in r
-
-    # aggiunge estremi del odminio radiale
-    append!(important_r_ticks, endpoints(world.intervals[1])...)
-    # elmina i duplicati e riordina
-    important_r_ticks = unique!(sort!(important_r_ticks))
-    # add_ticks_between_important_ticks è true: aggiunge i midpoints (i punti medi fra tick importanti consecutivi).
-    if add_ticks_between_important_ticks
-        important_r_ticks = sort!(vcat(important_r_ticks, StatsBase.midpoints(important_r_ticks)))
-    end
-    iL = searchsortedfirst(important_r_ticks, world.intervals[1].left)   # scarta i punti fuori dal domminio
-    iR = searchsortedfirst(important_r_ticks, world.intervals[1].right)  # scarta i punti fuori dal domminio
-
-    important_r_ticks = unique(map(t -> isapprox(t, 0, atol=1e-12) ? zero(T) : t, important_r_ticks[iL:iR]))  # normalizza valori molto prossimi a zero a esattamente zero
-    important_r_ticks = merge_close_ticks(important_r_ticks)                                                  # fonde tick troppo prossimi (rimuove ridondanze numeriche)
-    imp2order_r_ticks = merge_close_ticks(second_order_imp_ticks[1], min_diff=world_Δs[1] / 20)               # pulisce i tick di secondo ordine usando come soglia world_Δs[1]/20
-    important_r_ticks = merge_second_order_important_ticks(important_r_ticks, imp2order_r_ticks, min_diff=world_Δs[1] / 20) # integra i tick di 2° ordine nella lista principale ma rispettando una distanza minima (min_diff) per evitare eccessiva concentrazione; tipicamente inserisce solo quelli che non sono troppo vicini ad altri tick.
-    important_r_ticks = initialize_axis_ticks(important_r_ticks; max_ratio=T(max_distance_ratio))             # costruisce una prima versione dei tick applicando vincoli sul rapporto massimo tra intervalli consecutivi
-    important_r_ticks = fill_up_ticks(important_r_ticks, max_distance_r)                                      # aggiunge tick intermedi se qualche intervallo è più grande del max_distance_r impostato — serve a garantire la massima separazione consentita.
-
-    # stessa cosa costruendo i tick importanti per z
-
-    append!(important_z_ticks, endpoints(world.intervals[3])...)
-    important_z_ticks = unique!(sort!(important_z_ticks))
-    if add_ticks_between_important_ticks
-        important_z_ticks = sort!(vcat(important_z_ticks, StatsBase.midpoints(important_z_ticks)))
-    end
-    iL = searchsortedfirst(important_z_ticks, world.intervals[3].left)
-    iR = searchsortedfirst(important_z_ticks, world.intervals[3].right)
-    important_z_ticks = unique(map(t -> isapprox(t, 0, atol=1e-12) ? zero(T) : t, important_z_ticks[iL:iR]))
-    important_z_ticks = merge_close_ticks(important_z_ticks)
-    imp2order_z_ticks = merge_close_ticks(second_order_imp_ticks[3], min_diff=world_Δs[3] / 20)
-    important_z_ticks = merge_second_order_important_ticks(important_z_ticks, imp2order_z_ticks, min_diff=world_Δs[3] / 20)
-    important_z_ticks = initialize_axis_ticks(important_z_ticks; max_ratio=T(max_distance_ratio))
-    important_z_ticks = fill_up_ticks(important_z_ticks, max_distance_z)
-
-
-    # stessa cosa costruendo i tick importanti per φ
-
-    append!(important_φ_ticks, endpoints(world_φ_int)...)
-    important_φ_ticks = unique!(sort!(important_φ_ticks))
-    if add_ticks_between_important_ticks
-        important_φ_ticks = sort!(vcat(important_φ_ticks, StatsBase.midpoints(important_φ_ticks)))
-    end
-    iL = searchsortedfirst(important_φ_ticks, world_φ_int.left)
-    iR = searchsortedfirst(important_φ_ticks, world_φ_int.right)
-    important_φ_ticks = unique(map(t -> isapprox(t, 0, atol=1e-3) ? zero(T) : t, important_φ_ticks[iL:iR]))
-    important_φ_ticks = merge_close_ticks(important_φ_ticks, min_diff=T(1e-3))
-    imp2order_φ_ticks = merge_close_ticks(second_order_imp_ticks[2], min_diff=world_Δs[2] / 20)
-    important_φ_ticks = merge_second_order_important_ticks(important_φ_ticks, imp2order_φ_ticks, min_diff=world_Δs[2] / 20)
-    important_φ_ticks = initialize_axis_ticks(important_φ_ticks; max_ratio=T(max_distance_ratio))
-    important_φ_ticks = fill_up_ticks(important_φ_ticks, max_distance_φ)
-
-
-    #-------------------- costruzione degli assi ------------------------
-
-    # r
-    # prende i bordi e le condizioni al contorno corrette 
-    L, R, BL, BR = get_boundary_types(world.intervals[1])
-    int_r = Interval{L,R,T}(endpoints(world.intervals[1])...)
-    # crea una sse discreto con i nuovi valori importanti 
-    ax_r = even_tick_axis(DiscreteAxis{T,BL,BR}(int_r, important_r_ticks))
-
-    # φ
-    # stessa cosa di r ma qui controllo anche tutte le possibili simmetrie che phi può avere
-    L, R, BL, BR = get_boundary_types(world_φ_int)
-    int_φ = Interval{L,R,T}(endpoints(world_φ_int)...)
-    ax_φ = if int_φ.left == int_φ.right
-        DiscreteAxis{T,BL,BR}(int_φ, T[int_φ.left])
-    else
-        DiscreteAxis{T,BL,BR}(int_φ, important_φ_ticks)
-    end
-    if length(ax_φ) > 1
-        φticks = if R == :open
-            important_φ_ticks[1:end-1]
-        else
-            important_φ_ticks
-        end
-        ax_φ = typeof(ax_φ)(int_φ, φticks)
-    end
-    int_φ = ax_φ.interval
-    if isodd(length(ax_φ)) && length(ax_φ) > 1 # must be even
-        imax = findmax(diff(φticks))[2]
-        push!(φticks, (φticks[imax] + φticks[imax+1]) / 2)
-        sort!(φticks)
-        ax_φ = typeof(ax_φ)(int_φ, φticks) # must be even
-    end
-    if length(ax_φ) > 1
-        @assert iseven(length(ax_φ)) "CylindricalGrid must have even number of points in φ."
-    end
-
-    #z
-
-    # stessa cosa lungo z
-    L, R, BL, BR = get_boundary_types(world.intervals[3])
-    int_z = Interval{L,R,T}(endpoints(world.intervals[3])...)
-    ax_z = even_tick_axis(DiscreteAxis{T,BL,BR}(int_z, important_z_ticks))
+    #println(" 📏​ The total number of points for each grid are: z = $(length(ax_z))")
+    #println(" 📏​ The total number of points for each grid are: r = $(length(ax_r))")
+    #println(" 📏​ The total number of points for each grid are: ϕ = $(length(ax_φ))")
 
     return CylindricalGrid{T}((ax_r, ax_φ, ax_z))
 end
-
 
 
 function Grid(sim::Simulation{T,Cartesian};
@@ -666,8 +450,6 @@ function Grid(sim::Simulation{T,Cartesian};
     important_z_ticks = initialize_axis_ticks(important_z_ticks; max_ratio=T(max_distance_ratio))
     important_z_ticks = fill_up_ticks(important_z_ticks, max_distance_z)
 
-    # dopo il fill e stack, i miei nuovi punti della griglia sono sia quelli importanti ma anche quelli aggiunti con tick_max e
-
     # x
     L, R, BL, BR = get_boundary_types(world.intervals[1])
     int_x = Interval{L,R,T}(endpoints(world.intervals[1])...)
@@ -721,11 +503,8 @@ apply_initial_state!(sim, ElectricPotential, paint_contacts = false)
 function apply_initial_state!(sim::Simulation{T,CS}, ::Type{ElectricPotential}, grid::Grid{T}=Grid(sim);
     not_only_paint_contacts::Bool=true, paint_contacts::Bool=true)::Nothing where {T<:SSDFloat,CS}
     pcs = PotentialCalculationSetup(
-        sim.detector,
-        grid,
-        sim.medium;
-        use_nthreads=_guess_optimal_number_of_threads_for_SOR(size(grid),
-            Base.Threads.nthreads(), CS),
+        sim.detector, grid, sim.medium;
+        use_nthreads=_guess_optimal_number_of_threads_for_SOR(size(grid), Base.Threads.nthreads(), CS),
         not_only_paint_contacts, paint_contacts
     )
 
@@ -893,8 +672,6 @@ There are several keyword arguments which can be used to tune the simulation.
     In undepleted regions (determined in `calculate_electric_potential!(sim; depletion_handling = true)`), the dielectric permittivity
     of the semiconductor is scaled up to mimic conductive behavior. The scale factor can be tuned via 
     the function [`scaling_factor_for_permittivity_in_undepleted_region`](@ref).
-        # tesi felix, pag 52 : per risolvere equazione, Qeff in un HPGe non completaeìmente svuota si DIVIDE Qeff per un fattore f. 
-        # Questo fattore f e` scelto in modo che la permittivita` del materiale diventa epsilon_r * f. Qui non si divide Qeff ma si moltiplica epsilon_r.
 * `use_nthreads::Int`: Number of threads to use in the computation. Default is `Base.Threads.nthreads()`.
     The environment variable `JULIA_NUM_THREADS` must be set appropriately before the Julia session was
     started (e.g. `export JULIA_NUM_THREADS=8` in case of bash).
@@ -1047,6 +824,57 @@ function refine!(sim::Simulation{T}, ::Type{WeightingPotential}, contact_id::Int
     nothing
 end
 
+"""
+    compute_min_tick_distance(grid)
+
+Compute the minimum grid spacing (tick distance) for a grid.
+Tick distances are computed as a small fraction of the physical axis lengths and then clamped to a safe numerical range.
+
+# Arguments
+- `grid` : A simulation grid (`CylindricalGrid` or `CartesianGrid3D`).
+
+# Returns
+A tuple of minimum tick distances in internal units, matching the grid type:
+- Cylindrical: `(Δr, Δφ, Δz)`
+- Cartesian: `(Δx, Δy, Δz)`
+"""
+function compute_min_tick_distance(grid::CylindricalGrid{T}) where {T}
+    # qui vengono usati dei valori costanti
+    min_tick = T(1e-12)
+    max_tick = T(1e-5)
+    fraction = T(1e-3)
+
+    r_axis, phi_axis, z_axis = grid.axes
+
+    r_len = width(r_axis.interval)
+    z_len = width(z_axis.interval)
+
+    safe_r_mid = max(abs(mean(r_axis.interval)), T(1e-30))
+
+    Δr::T = clamp(r_len * fraction, min_tick, max_tick)
+    Δφ::T = clamp(Δr / safe_r_mid, min_tick, max_tick)
+    Δz::T = clamp(z_len * fraction, min_tick, max_tick)
+
+    return (Δr, Δφ, Δz)
+end
+
+function compute_min_tick_distance(grid::CartesianGrid3D{T}) where {T}
+    min_tick = T(1e-12)
+    max_tick = T(1e-5)
+    fraction = T(1e-3)
+
+    x_axis, y_axis, z_axis = grid.axes
+
+    x_len = width(x_axis.interval)
+    y_len = width(y_axis.interval)
+    z_len = width(z_axis.interval)
+
+    Δx::T = clamp(x_len * fraction, min_tick, max_tick)
+    Δy::T = clamp(y_len * fraction, min_tick, max_tick)
+    Δz::T = clamp(z_len * fraction, min_tick, max_tick)
+
+    return (Δx, Δy, Δz)
+end
 
 function _calculate_potential!(sim::Simulation{T,CS}, potential_type::UnionAll, contact_id::Union{Missing,Int}=missing;
     convergence_limit::Real=1e-7,
@@ -1068,21 +896,13 @@ function _calculate_potential!(sim::Simulation{T,CS}, potential_type::UnionAll, 
 )::Nothing where {T<:SSDFloat,CS<:AbstractCoordinateSystem}
 
     begin # preperations
-
-        onCPU = !(device_array_type <: GPUArrays.AnyGPUArray)           # determinare se il calcolo è su GPU o CPU. 
-        convergence_limit::T = T(convergence_limit)                     # convergenza come tipo T
-        isEP::Bool = potential_type == ElectricPotential                # determinare se è potenziale elettrico o di weighting
+        onCPU = !(device_array_type <: GPUArrays.AnyGPUArray)
+        convergence_limit::T = T(convergence_limit)
+        isEP::Bool = potential_type == ElectricPotential
         isWP::Bool = !isEP
         if ismissing(grid)
-            #Se non viene fornita una griglia, la funzione crea una griglia nuova basata sulle dimensioni del dispositivo
-            # se il potenziale è di weighting, vengono fatte aggiunte del secondo oridne a punti della griglia.
-            # max_distance_ratio = defaul 5
             grid = Grid(sim, for_weighting_potential=isWP, max_tick_distance=max_tick_distance, max_distance_ratio=max_distance_ratio)
         end
-        #--------------- PARAMETRO SOR ----------------
-        # preparazione parametro SOR
-        # Se sor_consts non sono forniti, vengono scelti valori di default in base al sistema di coordinate
-        # Adatta i valori se l’utente ha fornito un singolo numero o un tuple
         if ismissing(sor_consts)
             sor_consts = CS == Cylindrical ? (T(1.4), T(1.85)) : T(1.4)
         elseif length(sor_consts) == 1 && CS == Cylindrical
@@ -1093,54 +913,32 @@ function _calculate_potential!(sim::Simulation{T,CS}, potential_type::UnionAll, 
             sor_consts = T.(sor_consts)
         end
 
-        # --------------- PARAMETRO MIN TICK DISTANCE ---------------
-        # serve ca garantire che i putni della griglia non sinao troppo max_distance_ratio# new_min_tick è un atripletta (dx, dy, dx) o (dr, dφ, dz) che indica la risoluzione minima della griglia
-        # la griglia iniziale potrebbe cambiare durante il raffinamento o se si passa un dispositivo con dimensioni diverse.
-        # Serve a garantire stessa precisione numerica in tutte le direzioni, anche se il sistema di coordinate è cilindrico → φ dipende dal raggio
-        # Durante raffinamenti successivi, new_min_tick_distance serve come limite minimo per non ridurre troppo i passi della griglia, evitando instabilità numeriche o errori di SOR.
-        new_min_tick_distance::NTuple{3,T} = if CS == Cylindrical
-            if !ismissing(min_tick_distance)        # restituisce true se min_tick ha un valore altrimenti restituisce false se non continee nulla
-                # se min_tick_distance è un singolo valore di lunghezza, lo usa per r, φ e z
-                if min_tick_distance isa LengthQuantity
-                    world_r_mid = (sim.world.intervals[1].right + sim.world.intervals[1].left) / 2
-                    min_distance_z = min_distance_r = T(to_internal_units(min_tick_distance))
-                    min_distance_r, min_distance_z / world_r_mid, min_distance_z  # L’angolo φ viene scalato rispetto al raggio medio del mondo (min_distance_z / world_r_mid
-                # altrimenti, se è una tupla, usa i valori specifici per r, φ e z
+        new_min_tick_distance::NTuple{3,T} = begin
+            if ismissing(min_tick_distance)
+                compute_min_tick_distance(grid)
+            elseif min_tick_distance isa LengthQuantity
+                min_distance = T(to_internal_units(min_tick_distance))
+                if CS == Cylindrical
+                    world_r_mid = mean(sim.world.intervals[1])
+                    min_distance, min_distance / world_r_mid, min_distance
                 else
-                    T(to_internal_units(min_tick_distance[1])),
-                    T(to_internal_units(min_tick_distance[2])),
-                    T(to_internal_units(min_tick_distance[3]))
-                end
-                # se l'utente non specifica nulla, si usano i valori de dafault
-            else
-                (T(1e-5), T(1e-5) / (0.25 * grid.axes[1][end]), T(1e-5))
-            end
-            # stessa cosa ma se il sistema è cartesiano invece che cilindrico
-        else
-            if !ismissing(min_tick_distance)
-                if min_tick_distance isa LengthQuantity
-                    min_distance = T(to_internal_units(min_tick_distance))
                     min_distance, min_distance, min_distance
-                else
-                    T(to_internal_units(min_tick_distance[1])),
-                    T(to_internal_units(min_tick_distance[2])),
-                    T(to_internal_units(min_tick_distance[3]))
                 end
             else
-                (T(1e-5), T(1e-5), T(1e-5))
+                T(to_internal_units(min_tick_distance[1])),
+                T(to_internal_units(min_tick_distance[2])),
+                T(to_internal_units(min_tick_distance[3]))
             end
         end
 
+        println("minimum tick distance $(new_min_tick_distance)")
 
-        # --------------- PARAMETRO REFINEMENT LIMITS ---------------
-        refine = !ismissing(refinement_limits)  # se refinement_limits non è missing, allora refine = true
-        if !(refinement_limits isa Vector)      # se refinement_limits non è un vettore, lo converte in un vettore
+        refine = !ismissing(refinement_limits)
+        if !(refinement_limits isa Vector)
             refinement_limits = [refinement_limits]
         end
-        n_refinement_steps = length(refinement_limits) # numero di passi di raffinamento : se ho [0.2, 0.1, 0.05] sono 3 passi
+        n_refinement_steps = length(refinement_limits)
 
-        # --------------- PARAMETRO NUMERO THREAD CPU ---------------
-        # Determina quanti thread CPU usare
         max_nthreads, guess_nt = if use_nthreads isa Int
             if use_nthreads > Base.Threads.nthreads()
                 use_nthreads = Base.Threads.nthreads()
@@ -1157,10 +955,7 @@ function _calculate_potential!(sim::Simulation{T,CS}, potential_type::UnionAll, 
             _nt, false
         end
 
-        # --------------- parametri specifici per sistemi cilindrici ---------------
         only_2d::Bool = length(grid.axes[2]) == 1 ? true : false
-        # Controlla se la griglia è effettivamente 2D (simmetria φ)
-        # Serve per ridurre il carico di calcolo usando simmetria
         if CS == Cylindrical
             cyclic::T = width(grid.axes[2].interval)
             n_φ_sym::Int = only_2d ? 1 : round(Int, round(T(2π) / cyclic, digits=3))
@@ -1170,23 +965,11 @@ function _calculate_potential!(sim::Simulation{T,CS}, potential_type::UnionAll, 
                 "φ symmetry: calculating just 1/$(n_φ_sym) in φ of the detector."
             end
         end
-
-        # ----------------Bias e potenziali dei contatti ---------------
-
-        # Crea un vettore dei potenziali elettrici applicati ai contatti del dispositivo (sim.detector.contacts)
-        # Ogni contatto ha un attributo .potential
-        # Esempio: se ci sono due contatti a 0 V e 100 V → contact_potentials = [0, 100]
         contact_potentials::Vector{T} = [contact.potential for contact in sim.detector.contacts]
-        # Calcola la differenza di potenziale totale applicata al dispositivo
-        # Se non ci sono contatti, il bias è 0 (lo vede controllando la lunghezza di contact_potentials)
         bias_voltage::T = (length(contact_potentials) > 0) ? (maximum(contact_potentials) - minimum(contact_potentials)) : T(0)
-        # Il potenziale di pesatura non dipende dal bias reale applicato
         if isWP
-            bias_voltage = T(1) #  normlalizzato ad 1 per convenzione
+            bias_voltage = T(1)
         end
-
-        # ------------ stampa -----------------
-        # Stampa a video le informazioni principali
         if verbose
             sim_name = haskey(sim.config_dict, "name") ? sim.config_dict["name"] : "Unnamed"
             println(
@@ -1212,8 +995,6 @@ function _calculate_potential!(sim::Simulation{T,CS}, potential_type::UnionAll, 
             )
         end
     end
-
-    # ------------------------  Inizializzazione dello stato --------------------------
     if initialize
         if isEP
             apply_initial_state!(sim, potential_type, grid; not_only_paint_contacts, paint_contacts)
@@ -1224,7 +1005,7 @@ function _calculate_potential!(sim::Simulation{T,CS}, potential_type::UnionAll, 
                 device_array_type=device_array_type,
                 use_nthreads=guess_nt ? _guess_optimal_number_of_threads_for_SOR(size(sim.electric_potential.grid), max_nthreads[1], CS) : max_nthreads[1],
                 sor_consts=sor_consts)
-        else # weighting potential
+        else
             apply_initial_state!(sim, potential_type, contact_id, grid; not_only_paint_contacts, paint_contacts, depletion_handling)
             update_till_convergence!(sim, potential_type, contact_id, convergence_limit,
                 n_iterations_between_checks=n_iterations_between_checks,
@@ -1236,12 +1017,6 @@ function _calculate_potential!(sim::Simulation{T,CS}, potential_type::UnionAll, 
         end
     end
     # refinement_counter::Int = 1
-    #------------------- refinement -----------
-    # Per ogni livello di raffinamento:
-    # Aumenta la risoluzione della griglia nei punti critici
-    # Aggiorna il potenziale fino a convergenza
-    # Disabilita SOR all’ultimo step (sor_const = 1) per stabilità
-
     if refine
         for iref in 1:n_refinement_steps
             is_last_ref = iref >= 3 || iref == n_refinement_steps
@@ -1249,7 +1024,6 @@ function _calculate_potential!(sim::Simulation{T,CS}, potential_type::UnionAll, 
             # However, when already close to the final state, its better to 
             # to switch it off (sor_const = 1)
             ref_limits = T.(_extend_refinement_limits(refinement_limits[iref]))
-            println("Refiement value $(refinement_limits[iref])")
             if isEP
                 max_diffs = if iszero(bias_voltage)
                     abs.(ref_limits .* (extrema(sim.electric_potential.data) |> e -> e[2] - e[1]))
@@ -1283,13 +1057,8 @@ function _calculate_potential!(sim::Simulation{T,CS}, potential_type::UnionAll, 
                     paint_contacts=paint_contacts,
                     sor_consts=is_last_ref ? T(1) : sor_consts)
             end
-            nothing
         end
     end
-
-    # --------- altri print ---------------
-    #Controlla se qualche punto ha un potenziale fuori dai limiti fisici dei contatti
-    # Avvisa se il dispositivo non è completamente depletato
     if verbose && depletion_handling && isEP
         maximum_applied_potential = maximum(broadcast(c -> c.potential, sim.detector.contacts))
         minimum_applied_potential = minimum(broadcast(c -> c.potential, sim.detector.contacts))
@@ -1311,8 +1080,6 @@ function _calculate_potential!(sim::Simulation{T,CS}, potential_type::UnionAll, 
         end
     end
 
-    # Segna i punti nella griglia come bulk / non bulk / inattivi
-    # Serve per gestire depletion layer, layer inattivi e altre proprietà fisiche del materiale
     if isEP
         mark_bulk_bits!(sim.point_types.data)
     end
@@ -1326,7 +1093,6 @@ function _calculate_potential!(sim::Simulation{T,CS}, potential_type::UnionAll, 
 
     nothing
 end
-
 
 
 
