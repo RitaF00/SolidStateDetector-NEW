@@ -19,7 +19,7 @@ refinement_limits = [0.2, 0.1, 0.05, 0.02]
 
 #-------- ICPC vuoto -----------
 #save_sim_path = "saved_simulation/sim.h5"
-#-------- ICPC criostato -----------
+#-------- ICPC ILM -----------
 save_sim_path = "saved_simulation/sim_ILM.h5"
 
 
@@ -67,29 +67,31 @@ max_tick_distance_array = [0.5u"mm", 0.45u"mm", 0.4u"mm", 0.35u"mm",
 n_rows, n_cols = 2, 5
 plot_list = []
 
-for max_tick_distance in max_tick_distance_array
-    println("Simulating weighting potential with max tickness = $max_tick_distance")
+#for max_tick_distance in max_tick_distance_array
+println("Simulating weighting potential with max tickness = $max_tick_distance")
 
-    # Calcolo del weighting potential solo per il primo elettrodo
-    calculate_weighting_potential!(sim, 1,
-        refinement_limits=refinement_limits,
-        depletion_handling=true,
-        grid=Grid(sim, for_weighting_potential=true, max_tick_distance=max_tick_distance))
-
-
-    # Creiamo il plot
-    p = plot(sim.weighting_potentials[1],
-        contours_equal_potential=true,
-        linecolor=:white, levels=5,
-        title="max_tick = $(max_tick_distance)")
-    plot!(sim.detector, st=:slice, φ=0, legend=false)
-
-    push!(plot_list, p)
-end
+# Calcolo del weighting potential solo per il primo elettrodo
+calculate_weighting_potential!(sim, 1,
+    refinement_limits=refinement_limits,
+    depletion_handling=true,
+    grid=Grid(sim,
+        for_weighting_potential=true))
+#max_tick_distance=max_tick_distance))
 
 
-final_plot = plot(plot_list..., layout=(n_rows, n_cols), size=(2000, 800))
+# Creiamo il plot
+p = plot(sim.weighting_potentials[1],
+    contours_equal_potential=true,
+    linecolor=:white, levels=5)
+#title="max_tick = $(max_tick_distance)")
+plot!(sim.detector, st=:slice, φ=0, legend=false)
 
-savefig(final_plot, "plots/max_tick-analysis/ILM.png")
+#    push!(plot_list, p)
+#end
+
+
+#final_plot = plot(plot_list..., layout=(n_rows, n_cols), size=(2000, 800))
+
+savefig(p, "plots/max_tick-analysis/dafeult_ILM.png")
 
 
