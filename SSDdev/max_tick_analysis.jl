@@ -18,9 +18,9 @@ max_tick_distance = 0.5u"mm"
 refinement_limits = [0.2, 0.1, 0.05, 0.02]
 
 #-------- ICPC vuoto -----------
-#save_sim_path = "saved_simulation/sim.h5"
+save_sim_path = "saved_simulation/sim.h5"
 #-------- ICPC ILM -----------
-save_sim_path = "saved_simulation/sim_ILM.h5"
+#save_sim_path = "saved_simulation/sim_ILM.h5"
 
 
 
@@ -70,15 +70,15 @@ n_rows, n_cols = 2, 5
 plot_list = []
 
 #for max_tick_distance in max_tick_distance_array
-println("Simulating weighting potential with max tickness = $max_tick_distance")
+#println("Simulating weighting potential with max tickness = $max_tick_distance")
 
 # Calcolo del weighting potential solo per il primo elettrodo
 calculate_weighting_potential!(sim, 1,
     refinement_limits=refinement_limits,
     depletion_handling=true,
     grid=Grid(sim,
-        for_weighting_potential=true))
-#max_tick_distance=max_tick_distance))   # sto dacendo con griglia di default
+        for_weighting_potential=true))#,
+#max_tick_distance=0.3u"mm")) # sto dacendo default
 
 
 # Creiamo il plot
@@ -94,6 +94,6 @@ plot!(sim.detector, st=:slice, φ=0, legend=false)
 
 #final_plot = plot(plot_list..., layout=(n_rows, n_cols), size=(2000, 800))
 
-savefig(p, "plots/max_tick-analysis/dafeult_ILM.png")
+savefig(p, "plots/max_tick-analysis/default_vacuum.png")
 
 
