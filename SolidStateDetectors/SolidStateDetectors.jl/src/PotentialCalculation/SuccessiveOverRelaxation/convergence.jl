@@ -1,3 +1,40 @@
+# convergence.jl
+
+# ==============================
+# Pacchetti necessari
+# ==============================
+using JSON
+using Base.Threads
+using ProgressMeter
+# altri pacchetti necessari dal tuo progetto
+# using GPUArrays
+# using SolidStateDetectors.Utils
+# etc.
+
+
+
+
+# =============0 funzione aggiuntiva per cambiare nome al dizionario JSON ==============
+function next_available_filename(base::String)
+    if !isfile(base)
+        return base
+    end
+
+    name, ext = splitext(base)
+    i = 1
+    while true
+        candidate = "$(name)_$(i)$(ext)"
+        if !isfile(candidate)
+            return candidate
+        end
+        i += 1
+    end
+end
+
+
+# ==============================
+# Funzione di convergenza
+# ==============================
 function _update_till_convergence!(pcs::PotentialCalculationSetup{T,S,3},
     convergence_limit,
     via_KernelAbstractions::Bool;
@@ -6,62 +43,94 @@ function _update_till_convergence!(pcs::PotentialCalculationSetup{T,S,3},
     only2d::Val{only_2d}=Val{false}(),
     is_weighting_potential::Val{_is_weighting_potential}=Val{false}(),
     use_nthreads::Int=Base.Threads.nthreads(),
-    max_n_iterations::Int=10_000, # -1
+    max_n_iterations::Int=10_000,
     verbose::Bool=true
-) where {T,S,depletion_handling_enabled,only_2d,_is_weighting_potential} #  <: GPUArrays.AbstractGPUArray
+) where {T,S,depletion_handling_enabled,only_2d,_is_weighting_potential}
+
     backend = _ka_get_backend(pcs.potential)
     ndrange = size(pcs.potential)[1:3] .- 2
     kernel = get_sor_kernel(S, backend, Val(via_KernelAbstractions))
-    c_limit = _is_weighting_potential ? convergence_limit : abs(convergence_limit * (iszero(pcs.bias_voltage) ? maximum(abs.(pcs.potential)) : pcs.bias_voltage))
-    c = (one(c_limit) + c_limit) * 10 # Has to be larger than c_limit at the beginning
+
+    c_limit = _is_weighting_potential ? convergence_limit :
+              abs(convergence_limit * (iszero(pcs.bias_voltage) ?
+                                       maximum(abs.(pcs.potential)) :
+                                       pcs.bias_voltage))
+
+    c = (one(c_limit) + c_limit) * 10
     n_performed_iterations = 0
+
     tmp_potential = similar(pcs.potential, ndrange)
     inner_ranges = broadcast(i -> 2:size(tmp_potential, i)+1, (1, 2, 3))
-    is_logging(io) = isa(io, Base.TTY) == false || (get(ENV, "CI", nothing) == "true")
-    cs = fill(c, 4) # 4 is chosen by testing
+    cs = fill(c, 4)
+
     if verbose
-        prog = ProgressThresh(c_limit; dt=0.1, desc="Convergence: ", output=stderr, enabled=!is_logging(stderr))
+        prog = ProgressThresh(c_limit; dt=0.1, desc="Convergence: ", output=stderr)
     end
 
-    c_array = []
-    n_array = []
+    c_single = Float64[]
+    c_array = Float64[]
+    n_array = Int[]
 
     while c > c_limit
         for _ in 1:n_iterations_between_checks-1
-            update!(pcs, kernel, ndrange; use_nthreads, depletion_handling, is_weighting_potential, only2d)
-            n_performed_iterations += 1
-        end
-        begin
-            tmp_potential[:, :, :] .= view(pcs.potential, inner_ranges..., 1)
-            update!(pcs, kernel, ndrange; use_nthreads, depletion_handling, is_weighting_potential, only2d)
-            tmp_potential[:, :, :] .-= view(pcs.potential, inner_ranges..., 1)
-            n_performed_iterations += 1
-            c = maximum(abs.(tmp_potential))
-            push!(c_array, c)
-            push!(n_array, n_performed_iterations / n_iterations_between_checks)
+            old_potential = copy(Array(pcs.potential))
 
-            if verbose
-                ProgressMeter.update!(prog, c)
-            end
-            cs = circshift(cs, -1)
-            cs[end] = c
-            cs_μ = mean(cs)
-            cs_σ = std(cs, mean=cs_μ)
-            if cs_σ < c_limit
-                # Convergence limit not reached but the value of c does not change anymore
-                # Especially needed in case of undepleted detectors (grid points switching between depleted and undepleted)
-                break
-            end
+            update!(pcs, kernel, ndrange;
+                use_nthreads,
+                depletion_handling,
+                is_weighting_potential,
+                only2d)
+
+            new_potential = Array(pcs.potential)
+            c_local = maximum(abs.(new_potential .- old_potential))
+            push!(c_single, c_local)
+
+            n_performed_iterations += 1
         end
+
+        tmp_potential[:, :, :] .= view(pcs.potential, inner_ranges..., 1)
+        update!(pcs, kernel, ndrange;
+            use_nthreads,
+            depletion_handling,
+            is_weighting_potential,
+            only2d)
+        tmp_potential[:, :, :] .-= view(pcs.potential, inner_ranges..., 1)
+
+        n_performed_iterations += 1
+        c = maximum(abs.(tmp_potential))
+
+        push!(c_array, c)
+        push!(n_array, n_performed_iterations ÷ n_iterations_between_checks)
+
+        if verbose
+            ProgressMeter.update!(prog, c)
+        end
+
+        cs = circshift(cs, -1)
+        cs[end] = c
+        if std(cs) < c_limit
+            break
+        end
+
         if max_n_iterations != -1 && n_performed_iterations >= max_n_iterations
             break
         end
     end
+
     if verbose
         ProgressMeter.finish!(prog)
     end
+
     println("🔄 Number of iterations: $n_performed_iterations; final c = $c")
-    println("iteration array $(n_array)")
-    println("error array c_arr = $(c_array)")
+
+    # 🔹 Salvataggio NON distruttivo 🔹
+    if _is_weighting_potential
+        filename = next_available_filename("c_single.json")
+        open(filename, "w") do io
+            JSON.print(io, Dict("c_single" => c_single))
+        end
+        println("📁 Saved c_single to: $filename")
+    end
+
     return c
 end

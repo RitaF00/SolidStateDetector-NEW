@@ -64,6 +64,8 @@ max_tick_distance_array = [0.5u"mm", 0.45u"mm", 0.4u"mm", 0.35u"mm",
     0.3u"mm", 0.25u"mm", 0.2u"mm", 0.15u"mm",
     0.1u"mm"]
 
+
+
 n_rows, n_cols = 2, 5
 plot_list = []
 
@@ -76,7 +78,7 @@ calculate_weighting_potential!(sim, 1,
     depletion_handling=true,
     grid=Grid(sim,
         for_weighting_potential=true))
-#max_tick_distance=max_tick_distance))
+#max_tick_distance=max_tick_distance))   # sto dacendo con griglia di default
 
 
 # Creiamo il plot
