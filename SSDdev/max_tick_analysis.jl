@@ -14,7 +14,7 @@ gr()
 
 #------------ definizione dei parametri ------
 
-max_tick_distance = 0.35u"mm"
+max_tick_distance = 1u"mm"
 refinement_limits = [0.2, 0.1, 0.05, 0.02]
 
 #-------- ICPC vuoto -----------
@@ -84,8 +84,8 @@ calculate_weighting_potential!(sim, 1,
 # Creiamo il plot
 p = plot(sim.weighting_potentials[1],
     contours_equal_potential=true,
-    linecolor=:white, levels=5)
-#title="max_tick = $(max_tick_distance)")
+    linecolor=:white, levels=5,
+    title="max_tick = $(max_tick_distance)",)
 plot!(sim.detector, st=:slice, φ=0, legend=false)
 
 #    push!(plot_list, p)
