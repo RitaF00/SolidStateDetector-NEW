@@ -31,10 +31,6 @@ function next_available_filename(base::String)
     end
 end
 
-
-# ==============================
-# Funzione di convergenza
-# ==============================
 function _update_till_convergence!(pcs::PotentialCalculationSetup{T,S,3},
     convergence_limit,
     via_KernelAbstractions::Bool;
@@ -70,6 +66,9 @@ function _update_till_convergence!(pcs::PotentialCalculationSetup{T,S,3},
     c_single = Float64[]
     c_array = Float64[]
     n_array = Int[]
+
+    # 🔹 MOTIVO DI STOP
+    stop_reason = "unknown"
 
     while c > c_limit
         for _ in 1:n_iterations_between_checks-1
@@ -108,13 +107,23 @@ function _update_till_convergence!(pcs::PotentialCalculationSetup{T,S,3},
 
         cs = circshift(cs, -1)
         cs[end] = c
+
+        # ✅ STOP: convergenza stabile
         if std(cs) < c_limit
+            stop_reason = "std(cs) < c_limit (stable convergence)"
             break
         end
 
+        # ✅ STOP: massimo numero di iterazioni
         if max_n_iterations != -1 && n_performed_iterations >= max_n_iterations
+            stop_reason = "max_n_iterations reached"
             break
         end
+    end
+
+    # ✅ STOP: convergenza diretta
+    if c <= c_limit
+        stop_reason = "c <= c_limit (direct convergence)"
     end
 
     if verbose
@@ -122,12 +131,18 @@ function _update_till_convergence!(pcs::PotentialCalculationSetup{T,S,3},
     end
 
     println("🔄 Number of iterations: $n_performed_iterations; final c = $c")
+    println("🛑 Loop stopped because: $stop_reason")
 
     # 🔹 Salvataggio NON distruttivo 🔹
     if _is_weighting_potential
         filename = next_available_filename("c_single.json")
         open(filename, "w") do io
-            JSON.print(io, Dict("c_single" => c_single))
+            JSON.print(io, Dict(
+                "c_single" => c_single,
+                "stop_reason" => stop_reason,
+                "final_c" => c,
+                "iterations" => n_performed_iterations
+            ))
         end
         println("📁 Saved c_single to: $filename")
     end
