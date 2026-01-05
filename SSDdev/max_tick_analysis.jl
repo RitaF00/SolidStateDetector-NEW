@@ -14,7 +14,7 @@ gr()
 
 #------------ definizione dei parametri ------
 
-max_tick_distance = 0.3u"mm"
+
 refinement_limits = [0.2, 0.1, 0.05, 0.02]
 
 #-------- ICPC vuoto -----------
@@ -60,9 +60,13 @@ end
 println("Simulating weighting potential ")
 
 
+Δz = 0.25u"mm"
+f_conversion = sim.world.intervals[3].right / sim.world.intervals[1].right
+# devi ricordarti che dal file yaml le lunghezze vengono espresse in metri
+Δr = sim.world.intervals[1].right * 1000u"mm" / 4
+max_tick_distance = (Δr, 0u"rad", Δz)
 
-
-
+#max_tick_distance = 0.25u"mm"
 n_rows, n_cols = 2, 5
 plot_list = []
 
@@ -89,6 +93,6 @@ plot!(sim.detector, st=:slice, φ=0, legend=false)
 
 #final_plot = plot(plot_list..., layout=(n_rows, n_cols), size=(2000, 800))
 
-savefig(p, "plots/array_max_tick/array_0.68_0.3.png")
+#savefig(p, "plots/array_max_tick/r_z_0.25.png")
 
 

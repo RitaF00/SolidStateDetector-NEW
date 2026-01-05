@@ -362,6 +362,8 @@ function Grid(sim::Simulation{T,Cylindrical};
 
     total_points = length(ax_r) + length(ax_z)
 
+    println(" 📏​ The total number of points for the grid are: $total_points ( r: $(length(ax_r)), ϕ: $(length(ax_φ)), z: $(length(ax_z)) )")
+    println(" product of points r-z axes: $(length(ax_r) * length(ax_z))")
 
     #println(" 📏​ The total number of points for each grid are: z = $(length(ax_z))")
     #println(" 📏​ The total number of points for each grid are: r = $(length(ax_r))")
@@ -1020,6 +1022,17 @@ function _calculate_potential!(
 
             n_after = length(grid_after.axes[1]) +
                       length(grid_after.axes[3])
+
+
+            n_r = length(grid_after.axes[1])
+            n_phi = length(grid_after.axes[2])
+            n_z = length(grid_after.axes[3])
+            n_tot = n_r * n_phi * n_z
+
+            println(
+                "📊 Griglia AFTER refinement [$iref] → [$((iref+1))]: ",
+                "r=$n_r, ϕ=$n_phi, z=$n_z, tot=$n_tot"
+            )
 
             println(
                 "Refinement [$iref] → [$(iref+1)]: numero totale punti ",

@@ -55,36 +55,39 @@ Thus, there cannot be local extrema.
     
 """
 @inline @fastmath function handle_depletion(
-    new_potential::T, 
+    new_potential::T,
     imp_scale::T,
-    neighbor_potentials::NTuple{6,T}, 
-    q_eff_imp::T, 
+    neighbor_potentials::NTuple{6,T},
+    q_eff_imp::T,
     volume_weight::T,
-)::Tuple{T, T} where {T}
+)::Tuple{T,T} where {T}
     vmin::T = min(neighbor_potentials...)
     vmax::T = max(neighbor_potentials...)
-    
-    is_ptype = q_eff_imp < 0 
+
+    is_ptype = q_eff_imp < 0
     neighbor_relevant_extremum = is_ptype ? vmin : vmax
-    imp_contribution = q_eff_imp * volume_weight 
-    
-    if !iszero(imp_contribution) 
+    imp_contribution = q_eff_imp * volume_weight
+
+    if !iszero(imp_contribution)
         imp_scale = (neighbor_relevant_extremum - new_potential) / imp_contribution
         imp_scale = min(max(imp_scale, T(0)), T(1))
-        if vmax == vmin imp_scale = T(0) end
+        if vmax == vmin
+            imp_scale = T(0)
+        end
         new_potential += imp_scale * imp_contribution
         Δ = new_potential - neighbor_relevant_extremum
         if (is_ptype && Δ < 0) || (!is_ptype && Δ > 0)
             new_potential = neighbor_relevant_extremum
         end
     end
-    
+
     new_potential, imp_scale
 end
 
 @inline function apply_over_relaxation(new_potential::T, old_potential::T, sor_const::T)::T where {T}
     new_potential -= old_potential
     new_potential = muladd(new_potential, sor_const, old_potential)
+
 end
 
 include("CPU_outerloop.jl")
@@ -100,7 +103,7 @@ include("GPU_update.jl")
 include("convergence.jl")
 
 
-function mark_undep_bits!(point_types::Array{PointType, 3}, imp_scale::Array{T, 3}) where {T}
+function mark_undep_bits!(point_types::Array{PointType,3}, imp_scale::Array{T,3}) where {T}
     @inbounds for i in eachindex(imp_scale)
         point_types[i] += undepleted_bit * (is_pn_junction_point_type(point_types[i]) && imp_scale[i] < 1)
     end

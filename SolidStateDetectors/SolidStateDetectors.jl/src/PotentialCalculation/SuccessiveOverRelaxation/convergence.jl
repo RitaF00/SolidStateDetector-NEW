@@ -134,7 +134,7 @@ function _update_till_convergence!(pcs::PotentialCalculationSetup{T,S,3},
     println("🛑 Loop stopped because: $stop_reason")
 
     # qui posso salvare l'andamento dell'errore di convergenza su file JSON
-    #===
+
     # 🔹 Salvataggio NON distruttivo 🔹
     if _is_weighting_potential
         filename = next_available_filename("c_single.json")
@@ -149,7 +149,7 @@ function _update_till_convergence!(pcs::PotentialCalculationSetup{T,S,3},
         println("📁 Saved c_single to: $filename")
     end
 
-    ===#
+
 
     return c
 end
