@@ -94,6 +94,6 @@ plot!(sim.detector, st=:slice, φ=0, legend=false)
 
 #final_plot = plot(plot_list..., layout=(n_rows, n_cols), size=(2000, 800))
 
-#savefig(p, "plots/max_tick-analysis/default_vacuum.png")
+savefig(p, "plots/max_tick-analysis/added_grid_points/default_vacuum_03_r&z_axe.png")
 
 

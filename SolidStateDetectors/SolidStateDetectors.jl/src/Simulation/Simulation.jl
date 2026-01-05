@@ -360,6 +360,8 @@ function Grid(sim::Simulation{T,Cylindrical};
     int_z = Interval{L,R,T}(endpoints(world.intervals[3])...)
     ax_z = even_tick_axis(DiscreteAxis{T,BL,BR}(int_z, important_z_ticks))
 
+    total_points = length(ax_r) + length(ax_z)
+
 
     #println(" 📏​ The total number of points for each grid are: z = $(length(ax_z))")
     #println(" 📏​ The total number of points for each grid are: r = $(length(ax_r))")
@@ -876,11 +878,25 @@ function compute_min_tick_distance(grid::CartesianGrid3D{T}) where {T}
     return (Δx, Δy, Δz)
 end
 
-function _calculate_potential!(sim::Simulation{T,CS}, potential_type::UnionAll, contact_id::Union{Missing,Int}=missing;
+
+function _calculate_potential!(
+    sim::Simulation{T,CS},
+    potential_type::UnionAll,
+    contact_id::Union{Missing,Int}=missing;
     convergence_limit::Real=1e-7,
-    refinement_limits::Union{Missing,<:Real,Vector{<:Real},Tuple{<:Real,<:Real,<:Real},Vector{<:Tuple{<:Real,<:Real,<:Real}}}=[0.2, 0.1, 0.05],
-    min_tick_distance::Union{Missing,LengthQuantity,Tuple{LengthQuantity,<:Union{LengthQuantity,AngleQuantity},LengthQuantity}}=missing,
-    max_tick_distance::Union{Missing,LengthQuantity,Tuple{LengthQuantity,<:Union{LengthQuantity,AngleQuantity},LengthQuantity}}=missing,
+    refinement_limits::Union{
+        Missing,<:Real,Vector{<:Real},
+        Tuple{<:Real,<:Real,<:Real},
+        Vector{<:Tuple{<:Real,<:Real,<:Real}}
+    }=[0.2, 0.1, 0.05],
+    min_tick_distance::Union{
+        Missing,LengthQuantity,
+        Tuple{LengthQuantity,<:Union{LengthQuantity,AngleQuantity},LengthQuantity}
+    }=missing,
+    max_tick_distance::Union{
+        Missing,LengthQuantity,
+        Tuple{LengthQuantity,<:Union{LengthQuantity,AngleQuantity},LengthQuantity}
+    }=missing,
     max_distance_ratio::Real=5,
     depletion_handling::Bool=false,
     use_nthreads::Union{Int,Vector{Int}}=Base.Threads.nthreads(),
@@ -892,17 +908,25 @@ function _calculate_potential!(sim::Simulation{T,CS}, potential_type::UnionAll, 
     verbose::Bool=true,
     device_array_type::Type{<:AbstractArray}=Array,
     initialize::Bool=true,
-    grid::Union{Missing,Grid{T}}=initialize ? missing : (potential_type == ElectricPotential ? sim.electric_potential.grid : sim.weighting_potentials[contact_id].grid)
+    grid::Union{Missing,Grid{T}}=initialize ? missing :
+                                 (potential_type == ElectricPotential ?
+                                  sim.electric_potential.grid :
+                                  sim.weighting_potentials[contact_id].grid)
 )::Nothing where {T<:SSDFloat,CS<:AbstractCoordinateSystem}
 
-    begin # preperations
+    begin # preparations
         onCPU = !(device_array_type <: GPUArrays.AnyGPUArray)
-        convergence_limit::T = T(convergence_limit)
-        isEP::Bool = potential_type == ElectricPotential
-        isWP::Bool = !isEP
+        convergence_limit = T(convergence_limit)
+        isEP = potential_type == ElectricPotential
+        isWP = !isEP
+
         if ismissing(grid)
-            grid = Grid(sim, for_weighting_potential=isWP, max_tick_distance=max_tick_distance, max_distance_ratio=max_distance_ratio)
+            grid = Grid(sim;
+                for_weighting_potential=isWP,
+                max_tick_distance=max_tick_distance,
+                max_distance_ratio=max_distance_ratio)
         end
+
         if ismissing(sor_consts)
             sor_consts = CS == Cylindrical ? (T(1.4), T(1.85)) : T(1.4)
         elseif length(sor_consts) == 1 && CS == Cylindrical
@@ -917,12 +941,12 @@ function _calculate_potential!(sim::Simulation{T,CS}, potential_type::UnionAll, 
             if ismissing(min_tick_distance)
                 compute_min_tick_distance(grid)
             elseif min_tick_distance isa LengthQuantity
-                min_distance = T(to_internal_units(min_tick_distance))
+                min_d = T(to_internal_units(min_tick_distance))
                 if CS == Cylindrical
                     world_r_mid = mean(sim.world.intervals[1])
-                    min_distance, min_distance / world_r_mid, min_distance
+                    min_d, min_d / world_r_mid, min_d
                 else
-                    min_distance, min_distance, min_distance
+                    min_d, min_d, min_d
                 end
             else
                 T(to_internal_units(min_tick_distance[1])),
@@ -931,163 +955,283 @@ function _calculate_potential!(sim::Simulation{T,CS}, potential_type::UnionAll, 
             end
         end
 
-        println("minimum tick distance $(new_min_tick_distance)")
-
         refine = !ismissing(refinement_limits)
-        if !(refinement_limits isa Vector)
-            refinement_limits = [refinement_limits]
-        end
+        refinement_limits isa Vector || (refinement_limits = [refinement_limits])
         n_refinement_steps = length(refinement_limits)
-
-        max_nthreads, guess_nt = if use_nthreads isa Int
-            if use_nthreads > Base.Threads.nthreads()
-                use_nthreads = Base.Threads.nthreads()
-                @warn "`use_nthreads` was set to `Base.Threads.nthreads() = $(Base.Threads.nthreads())`.
-                    The environment variable `JULIA_NUM_THREADS` must be set appropriately before the julia session is started."
-            end
-            fill(use_nthreads, n_refinement_steps + 1), true
-        else
-            if length(use_nthreads) > n_refinement_steps + 1
-                use_nthreads = use_nthreads[1:n_refinement_steps+1]
-            end
-            _nt = fill(maximum(use_nthreads), n_refinement_steps + 1)
-            _nt[1:length(use_nthreads)] = use_nthreads
-            _nt, false
-        end
-
-        only_2d::Bool = length(grid.axes[2]) == 1 ? true : false
-        if CS == Cylindrical
-            cyclic::T = width(grid.axes[2].interval)
-            n_φ_sym::Int = only_2d ? 1 : round(Int, round(T(2π) / cyclic, digits=3))
-            n_φ_sym_info_txt = if only_2d
-                "φ symmetry: Detector is φ-symmetric -> 2D computation."
-            else
-                "φ symmetry: calculating just 1/$(n_φ_sym) in φ of the detector."
-            end
-        end
-        contact_potentials::Vector{T} = [contact.potential for contact in sim.detector.contacts]
-        bias_voltage::T = (length(contact_potentials) > 0) ? (maximum(contact_potentials) - minimum(contact_potentials)) : T(0)
-        if isWP
-            bias_voltage = T(1)
-        end
-        if verbose
-            sim_name = haskey(sim.config_dict, "name") ? sim.config_dict["name"] : "Unnamed"
-            println(
-                "Simulation: $(sim_name)\n",
-                "$(isEP ? "Electric" : "Weighting") Potential Calculation$(isEP ? "" : " - ID: $contact_id")\n",
-                if isEP
-                    "Bias voltage: $(bias_voltage) V\n"
-                else
-                    ""
-                end,
-                if CS == Cylindrical
-                    "$n_φ_sym_info_txt\n"
-                else
-                    ""
-                end,
-                "Precision: $T\n",
-                "Device: $(onCPU ? "CPU" : "GPU")\n",
-                onCPU ? "Max. CPU Threads: $(maximum(max_nthreads))\n" : "",
-                "Coordinate system: $(CS)\n",
-                "N Refinements: -> $(n_refinement_steps)\n",
-                "Convergence limit: $convergence_limit $(isEP ? " => $(round(abs(bias_voltage * convergence_limit), sigdigits=2)) V" : "")\n",
-                "Initial grid size: $(size(grid))\n",
-            )
-        end
     end
+
     if initialize
         if isEP
-            apply_initial_state!(sim, potential_type, grid; not_only_paint_contacts, paint_contacts)
-            update_till_convergence!(sim, potential_type, convergence_limit,
-                n_iterations_between_checks=n_iterations_between_checks,
-                max_n_iterations=max_n_iterations,
-                depletion_handling=depletion_handling,
-                device_array_type=device_array_type,
-                use_nthreads=guess_nt ? _guess_optimal_number_of_threads_for_SOR(size(sim.electric_potential.grid), max_nthreads[1], CS) : max_nthreads[1],
-                sor_consts=sor_consts)
+            apply_initial_state!(sim, potential_type, grid;
+                not_only_paint_contacts, paint_contacts)
+            update_till_convergence!(sim, potential_type, convergence_limit;
+                n_iterations_between_checks,
+                max_n_iterations,
+                depletion_handling,
+                device_array_type,
+                use_nthreads,
+                sor_consts)
         else
-            apply_initial_state!(sim, potential_type, contact_id, grid; not_only_paint_contacts, paint_contacts, depletion_handling)
-            update_till_convergence!(sim, potential_type, contact_id, convergence_limit,
-                n_iterations_between_checks=n_iterations_between_checks,
-                max_n_iterations=max_n_iterations,
-                depletion_handling=depletion_handling,
-                device_array_type=device_array_type,
-                use_nthreads=guess_nt ? _guess_optimal_number_of_threads_for_SOR(size(sim.weighting_potentials[contact_id].grid), max_nthreads[1], CS) : max_nthreads[1],
-                sor_consts=sor_consts)
+            apply_initial_state!(sim, potential_type, contact_id, grid;
+                not_only_paint_contacts, paint_contacts, depletion_handling)
+            update_till_convergence!(sim, potential_type, contact_id, convergence_limit;
+                n_iterations_between_checks,
+                max_n_iterations,
+                depletion_handling,
+                device_array_type,
+                use_nthreads,
+                sor_consts)
         end
     end
-    # refinement_counter::Int = 1
+
+    # ================= REFINEMENT LOOP =================
     if refine
         for iref in 1:n_refinement_steps
             is_last_ref = iref >= 3 || iref == n_refinement_steps
-            # SOR is good in order to converge quickly against the final state. 
-            # However, when already close to the final state, its better to 
-            # to switch it off (sor_const = 1)
             ref_limits = T.(_extend_refinement_limits(refinement_limits[iref]))
+
+            # ---------- GRID SIZE BEFORE ----------
+            grid_before = isEP ?
+                          sim.electric_potential.grid :
+                          sim.weighting_potentials[contact_id].grid
+
+            n_before = length(grid_before.axes[1]) +
+                       length(grid_before.axes[3])
+
+            # ---------- REFINE ----------
             if isEP
-                max_diffs = if iszero(bias_voltage)
-                    abs.(ref_limits .* (extrema(sim.electric_potential.data) |> e -> e[2] - e[1]))
-                else
-                    abs.(ref_limits .* bias_voltage)
-                end
+                bias_voltage = maximum(c.potential for c in sim.detector.contacts) -
+                               minimum(c.potential for c in sim.detector.contacts)
+
+                max_diffs = iszero(bias_voltage) ?
+                            abs.(ref_limits .* (extrema(sim.electric_potential.data) |> x -> x[2] - x[1])) :
+                            abs.(ref_limits .* bias_voltage)
+
                 refine!(sim, ElectricPotential, max_diffs, new_min_tick_distance)
-                nt = guess_nt ? _guess_optimal_number_of_threads_for_SOR(size(sim.electric_potential.grid), max_nthreads[iref+1], CS) : max_nthreads[iref+1]
-                verbose && println("Grid size: $(size(sim.electric_potential.data)) - $(onCPU ? "using $(nt) threads now" : "GPU")")
-                update_till_convergence!(sim, potential_type, convergence_limit,
-                    n_iterations_between_checks=n_iterations_between_checks,
-                    max_n_iterations=max_n_iterations,
-                    depletion_handling=depletion_handling,
-                    use_nthreads=nt,
-                    device_array_type=device_array_type,
-                    not_only_paint_contacts=not_only_paint_contacts,
-                    paint_contacts=paint_contacts,
-                    sor_consts=is_last_ref ? T(1) : sor_consts)
             else
                 max_diffs = abs.(ref_limits)
                 refine!(sim, WeightingPotential, contact_id, max_diffs, new_min_tick_distance)
-                nt = guess_nt ? _guess_optimal_number_of_threads_for_SOR(size(sim.weighting_potentials[contact_id].grid), max_nthreads[iref+1], CS) : max_nthreads[iref+1]
-                verbose && println("Grid size: $(size(sim.weighting_potentials[contact_id].data)) - $(onCPU ? "using $(nt) threads now" : "GPU")")
-                update_till_convergence!(sim, potential_type, contact_id, convergence_limit,
-                    n_iterations_between_checks=n_iterations_between_checks,
-                    max_n_iterations=max_n_iterations,
-                    depletion_handling=depletion_handling,
-                    use_nthreads=nt,
-                    device_array_type=device_array_type,
-                    not_only_paint_contacts=not_only_paint_contacts,
-                    paint_contacts=paint_contacts,
+            end
+
+            # ---------- GRID SIZE AFTER ----------
+            grid_after = isEP ?
+                         sim.electric_potential.grid :
+                         sim.weighting_potentials[contact_id].grid
+
+            n_after = length(grid_after.axes[1]) +
+                      length(grid_after.axes[3])
+
+            println(
+                "Refinement [$iref] → [$(iref+1)]: numero totale punti ",
+                n_before == n_after ? "NON è cambiato" : "È CAMBIATO",
+                " ($n_before → $n_after)"
+            )
+
+
+            # === BLOCCO DI GESTIONE POST-REFINE ===
+
+            do_manual_wp_refine = (!isEP) && (iref <= 2)
+
+            if n_before == n_after && do_manual_wp_refine
+
+                #====
+                # -------------------------------------------------
+                # Raffinamento MANUALE asse z (solo WP, early steps)
+                # -------------------------------------------------
+                ax_z_old = grid_after.axes[3]
+                z_ticks_old = ax_z_old.ticks
+
+                println("📏 WP | punti z prima: ", length(z_ticks_old))
+
+                # Trova i due intervalli più grandi
+                diffs = diff(z_ticks_old)
+                max_indices = partialsortperm(diffs, 1:2; rev=true)
+
+                # Nuovi punti centrali
+                new_z = [(z_ticks_old[i] + z_ticks_old[i+1]) / 2 for i in max_indices]
+                println("➕ WP | nuovi punti z: ", new_z)
+
+                # Nuovo asse z
+                z_ticks_new = sort!(vcat(z_ticks_old, new_z))
+                ax_z_new = typeof(ax_z_old)(ax_z_old.interval, z_ticks_new)
+
+                println("📏 WP | punti z dopo: ", length(z_ticks_new))
+
+                # Nuova griglia WP (solo asse z modificato)
+                axes_new = (grid_after.axes[1], grid_after.axes[2], ax_z_new)
+                grid_wp_new = Grid{eltype(grid_after),3,typeof(grid_after).parameters[3]}(axes_new)
+                # ⚠️ Dati RI-ALLOCAZIONE sicura (NO riuso diretto)
+                wp_old = sim.weighting_potentials[contact_id]
+                wp_new_data = similar(wp_old.data, size(wp_old.data, 1),
+                    size(wp_old.data, 2),
+                    length(z_ticks_new))
+                fill!(wp_new_data, zero(eltype(wp_new_data)))
+
+
+                wp_new = WeightingPotential(wp_new_data, grid_wp_new)
+                sim.weighting_potentials[contact_id] = wp_new
+
+                println("✅ WP | asse z manuale applicato")
+
+                # ===== PRINT DIAGNOSTICO (QUI) =====
+                n_r = length(grid_wp_new.axes[1])
+                n_phi = length(grid_wp_new.axes[2])
+                n_z = length(grid_wp_new.axes[3])
+                n_tot = n_r * n_phi * n_z
+
+                println(
+                    "🧲 WP | griglia MANUALE usata → ",
+                    "r=$n_r, ϕ=$n_phi, z=$n_z (tot=$n_tot)"
+                )
+
+                # -------------------------------------------------
+                # Raffinamento MANUALE asse r (solo WP, early steps)
+                # -------------------------------------------------
+                ax_r_old = grid_after.axes[1]
+                r_ticks_old = ax_r_old.ticks
+
+                println("📏 WP | punti r prima: ", length(r_ticks_old))
+
+                # Trova i due intervalli più grandi
+                diffs = diff(r_ticks_old)
+                max_indices = partialsortperm(diffs, 1:2; rev=true)
+
+                # Nuovi punti centrali
+                new_r = [(r_ticks_old[i] + r_ticks_old[i+1]) / 2 for i in max_indices]
+                println("➕ WP | nuovi punti r: ", new_r)
+
+                # Nuovo asse r
+                r_ticks_new = sort!(vcat(r_ticks_old, new_r))
+                ax_r_new = typeof(ax_r_old)(ax_r_old.interval, r_ticks_new)
+
+                println("📏 WP | punti r dopo: ", length(r_ticks_new))
+
+                # Nuova griglia WP (solo asse r modificato)
+                axes_new = (ax_r_new, grid_after.axes[2], grid_after.axes[3])
+                grid_wp_new = Grid{eltype(grid_after),3,typeof(grid_after).parameters[3]}(axes_new)
+
+                # ⚠️ Dati RI-ALLOCAZIONE sicura (NO riuso diretto)
+                wp_old = sim.weighting_potentials[contact_id]
+                wp_new_data = similar(
+                    wp_old.data,
+                    length(r_ticks_new),
+                    size(wp_old.data, 2),
+                    size(wp_old.data, 3)
+                )
+                fill!(wp_new_data, zero(eltype(wp_new_data)))
+
+                wp_new = WeightingPotential(wp_new_data, grid_wp_new)
+                sim.weighting_potentials[contact_id] = wp_new
+
+                println("✅ WP | asse r manuale applicato")
+
+                # ===== PRINT DIAGNOSTICO =====
+                n_r = length(grid_wp_new.axes[1])
+                n_phi = length(grid_wp_new.axes[2])
+                n_z = length(grid_wp_new.axes[3])
+                n_tot = n_r * n_phi * n_z
+
+                println(
+                    "🧲 WP | griglia MANUALE usata → ",
+                    "r=$n_r, ϕ=$n_phi, z=$n_z (tot=$n_tot)"
+                )
+
+                ====================================#
+
+                # -------------------------------------------------
+                # Raffinamento MANUALE assi r + z (solo WP)
+                # -------------------------------------------------
+
+                # ===== ASSE r =====
+                ax_r_old = grid_after.axes[1]
+                r_ticks_old = ax_r_old.ticks
+                println("📏 WP | punti r prima: ", length(r_ticks_old))
+
+                diffs_r = diff(r_ticks_old)
+                idx_r = partialsortperm(diffs_r, 1:2; rev=true)
+                new_r = [(r_ticks_old[i] + r_ticks_old[i+1]) / 2 for i in idx_r]
+
+                r_ticks_new = sort!(vcat(r_ticks_old, new_r))
+                ax_r_new = typeof(ax_r_old)(ax_r_old.interval, r_ticks_new)
+
+                println("➕ WP | nuovi punti r: ", new_r)
+                println("📏 WP | punti r dopo: ", length(r_ticks_new))
+
+
+                # ===== ASSE z =====
+                ax_z_old = grid_after.axes[3]
+                z_ticks_old = ax_z_old.ticks
+                println("📏 WP | punti z prima: ", length(z_ticks_old))
+
+                diffs_z = diff(z_ticks_old)
+                idx_z = partialsortperm(diffs_z, 1:2; rev=true)
+                new_z = [(z_ticks_old[i] + z_ticks_old[i+1]) / 2 for i in idx_z]
+
+                z_ticks_new = sort!(vcat(z_ticks_old, new_z))
+                ax_z_new = typeof(ax_z_old)(ax_z_old.interval, z_ticks_new)
+
+                println("➕ WP | nuovi punti z: ", new_z)
+                println("📏 WP | punti z dopo: ", length(z_ticks_new))
+
+
+                # ===== NUOVA GRIGLIA WP =====
+                axes_new = (ax_r_new, grid_after.axes[2], ax_z_new)
+                grid_wp_new = Grid{eltype(grid_after),3,typeof(grid_after).parameters[3]}(axes_new)
+
+                # ===== RI-ALLOCAZIONE DATI WP =====
+                wp_old = sim.weighting_potentials[contact_id]
+
+                wp_new_data = similar(
+                    wp_old.data,
+                    length(r_ticks_new),
+                    size(wp_old.data, 2),
+                    length(z_ticks_new)
+                )
+                fill!(wp_new_data, zero(eltype(wp_new_data)))
+
+                wp_new = WeightingPotential(wp_new_data, grid_wp_new)
+                sim.weighting_potentials[contact_id] = wp_new
+
+                println("✅ WP | assi r + z manuali applicati")
+
+                # ===== PRINT DIAGNOSTICO =====
+                n_r = length(grid_wp_new.axes[1])
+                n_phi = length(grid_wp_new.axes[2])
+                n_z = length(grid_wp_new.axes[3])
+                n_tot = n_r * n_phi * n_z
+
+                println(
+                    "🧲 WP | griglia MANUALE usata → ",
+                    "r=$n_r, ϕ=$n_phi, z=$n_z (tot=$n_tot)"
+                )
+
+            else
+                # -------------------------------------------------
+                # refine! ha già cambiato la griglia → path standard
+                # -------------------------------------------------
+                println("🔁 Griglia raffinata automaticamente → nessun intervento manuale")
+            end
+
+
+            # da qui rinizia il vecchio codice 
+            # ---------- SOLVE AGAIN ----------
+            if isEP
+                update_till_convergence!(sim, potential_type, convergence_limit;
+                    n_iterations_between_checks,
+                    max_n_iterations,
+                    depletion_handling,
+                    device_array_type,
+                    use_nthreads,
+                    sor_consts=is_last_ref ? T(1) : sor_consts)
+            else
+                update_till_convergence!(sim, potential_type, contact_id, convergence_limit;
+                    n_iterations_between_checks,
+                    max_n_iterations,
+                    depletion_handling,
+                    device_array_type,
+                    use_nthreads,
                     sor_consts=is_last_ref ? T(1) : sor_consts)
             end
-        end
-    end
-    if verbose && depletion_handling && isEP
-        maximum_applied_potential = maximum(broadcast(c -> c.potential, sim.detector.contacts))
-        minimum_applied_potential = minimum(broadcast(c -> c.potential, sim.detector.contacts))
-        @inbounds for i in eachindex(sim.electric_potential.data)
-            if sim.electric_potential.data[i] < minimum_applied_potential # p-type
-                @warn """Detector seems not to be fully depleted at a bias voltage of $(bias_voltage) V.
-                    At least one grid point has a smaller potential value ($(sim.electric_potential.data[i]) V)
-                    than the minimum applied potential ($(minimum_applied_potential) V). This should not be.
-                    However, small overshoots could be due to numerical precision."""
-                break
-            end
-            if sim.electric_potential.data[i] > maximum_applied_potential # n-type
-                @warn """Detector seems not to be not fully depleted at a bias voltage of $(bias_voltage) V.
-                    At least one grid point has a higher potential value ($(sim.electric_potential.data[i]) V)
-                    than the maximum applied potential ($(maximum_applied_potential) V). This should not be.
-                    However, small overshoots could be due to numerical precision."""
-                break
-            end
-        end
-    end
-
-    if isEP
-        mark_bulk_bits!(sim.point_types.data)
-    end
-    if depletion_handling && isEP
-        mark_undep_bits!(sim.point_types.data, sim.imp_scale.data)
-
-        if isdefined(sim.detector.semiconductor.impurity_density_model, :surface_imp_model)
-            mark_inactivelayer_bits!(sim.point_types.data)
         end
     end
 
