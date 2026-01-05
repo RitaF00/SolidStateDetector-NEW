@@ -1029,7 +1029,7 @@ function _calculate_potential!(
 
 
             # === BLOCCO DI GESTIONE POST-REFINE ===
-
+            #===
             do_manual_wp_refine = (!isEP) && (iref <= 2)
 
             if n_before == n_after && do_manual_wp_refine
@@ -1211,7 +1211,7 @@ function _calculate_potential!(
                 # -------------------------------------------------
                 println("🔁 Griglia raffinata automaticamente → nessun intervento manuale")
             end
-
+            ===#
 
             # da qui rinizia il vecchio codice 
             # ---------- SOLVE AGAIN ----------
