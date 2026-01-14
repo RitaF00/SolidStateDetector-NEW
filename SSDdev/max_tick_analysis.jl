@@ -22,12 +22,14 @@ save_sim_path = "saved_simulation/sim.h5"
 #-------- ICPC ILM -----------
 #save_sim_path = "saved_simulation/sim_ILM.h5"
 
+
+
 # ------------------------
 # SCELTA 
 # ------------------------
 # true  → ricalcola sempre e sovrascrivi
 # false → usa il file salvato (se esiste)
-recalculate = true   # <<<<<<<< CAMBIA QUI
+recalculate = false   # <<<<<<<< CAMBIA QUI
 
 # ------------------------
 # Logica principale
@@ -38,10 +40,9 @@ if isfile(save_sim_path) && !recalculate
 
 else
     println("🔧 New simulation for the electric potential...")
-
+    max_tick_distance = 0.5u"mm"
     sim = Simulation(SSD_examples[:InvertedCoax])
     #sim = Simulation(SSD_examples[:IVCIlayer])
-    max_tick_distance = 0.5u"mm"
     sim.detector = SolidStateDetector(sim.detector, contact_id=2, contact_potential=500u"V")
     grid = Grid(sim, max_tick_distance=max_tick_distance)
 
@@ -56,11 +57,38 @@ else
     ssd_write(save_sim_path, sim)
 end
 
-max_tick_distance = 0.3u"mm"
 
-println("🔧 New simulation for the weighting potential...")
+Δz = 0.25u"mm"
+f_conversion = sim.world.intervals[3].right / sim.world.intervals[1].right
+# devi ricordarti che dal file yaml le lunghezze vengono espresse in metri
+Δr = sim.world.intervals[1].right * 1000u"mm" / 4
+#max_tick_distance = (Δr, 0u"rad", Δz)
 
+
+#max_tick_distance = 0.25u"mm"
+n_rows, n_cols = 2, 5
+plot_list = []
+
+max_tick_array = [0.5u"mm", 0.45u"mm", 0.4u"mm", 0.35u"mm", 0.3u"mm", 0.25u"mm", 0.2u"mm", 0.15u"mm", 0.1u"mm"]
+
+#=
 # Calcolo del weighting potential solo per il primo elettrodo
+for max_tick_distance in max_tick_array
+    println(" max_tick_distance = $max_tick_distance ")
+    calculate_weighting_potential!(sim, 1,
+        refinement_limits=refinement_limits,
+        depletion_handling=true,
+        grid=Grid(sim,
+            for_weighting_potential=true,
+            max_tick_distance=max_tick_distance))
+end
+
+=#
+
+max_tick_distance = 0.05u"mm"
+
+println(" calculating weighting potential with max_tick_distance = $max_tick_distance ")
+
 calculate_weighting_potential!(sim, 1,
     refinement_limits=refinement_limits,
     depletion_handling=true,
@@ -68,12 +96,10 @@ calculate_weighting_potential!(sim, 1,
         for_weighting_potential=true,
         max_tick_distance=max_tick_distance))
 
-
 # Creiamo il plot
 p = plot(sim.weighting_potentials[1],
     contours_equal_potential=true,
-    linecolor=:white, levels=5,
-    title="max_tick = $(max_tick_distance)",)
+    linecolor=:white, levels=5, tile="max tick distance = $(max_tick_distance)",)
 plot!(sim.detector, st=:slice, φ=0, legend=false)
 
 #    push!(plot_list, p)
@@ -82,6 +108,6 @@ plot!(sim.detector, st=:slice, φ=0, legend=false)
 
 #final_plot = plot(plot_list..., layout=(n_rows, n_cols), size=(2000, 800))
 
-savefig(p, "vediamo.png")
+savefig(p, "0.05mm.png")
 
 
