@@ -85,29 +85,64 @@ end
 
 =#
 
-max_tick_distance = 0.05u"mm"
 
-println(" calculating weighting potential with max_tick_distance = $max_tick_distance ")
+max_tick_distance = 0.5u"mm"
 
-calculate_weighting_potential!(sim, 1,
-    refinement_limits=refinement_limits,
-    depletion_handling=true,
-    grid=Grid(sim,
-        for_weighting_potential=true,
-        max_tick_distance=max_tick_distance))
-
-# Creiamo il plot
-p = plot(sim.weighting_potentials[1],
-    contours_equal_potential=true,
-    linecolor=:white, levels=5, tile="max tick distance = $(max_tick_distance)",)
-plot!(sim.detector, st=:slice, φ=0, legend=false)
-
-#    push!(plot_list, p)
-#end
+max_tick_array = [0.5u"mm", 0.45u"mm", 0.4u"mm", 0.35u"mm", 0.3u"mm", 0.25u"mm", 0.2u"mm", 0.15u"mm", 0.1u"mm", 0.05u"mm", 0.02u"mm"]
 
 
-#final_plot = plot(plot_list..., layout=(n_rows, n_cols), size=(2000, 800))
 
-savefig(p, "0.05mm.png")
+# Assumiamo che max_tick_array esista già
+n = length(max_tick_array)
+
+# Creiamo una griglia di subplot (ad esempio 2 colonne)
+ncols = 3
+nrows = ceil(Int, n / ncols)
+
+# Preparo il layout
+plt = plot(layout=(nrows, ncols), size=(800, 400 * nrows))
+
+# Coordinate del rettangolo
+x_min = 0.015
+x_max = 0.020
+y_min = 0.02
+y_max = 0.04
+x_rect = [x_min, x_max, x_max, x_min, x_min]
+y_rect = [y_min, y_min, y_max, y_max, y_min]
+
+# Loop su tutti i weighting potentials
+for (i, max_tick_distance) in enumerate(max_tick_array)
+
+    println(" calculating weighting potential with max_tick_distance = $max_tick_distance ")
+
+    # Se vuoi, puoi calcolarlo qui o usare quelli già calcolati
+    calculate_weighting_potential!(sim, 1,
+        refinement_limits=refinement_limits,
+        depletion_handling=true,
+        grid=Grid(sim,
+            for_weighting_potential=true,
+            max_tick_distance=max_tick_distance))
+
+    # Plot principale
+    plot!(plt[i], sim.weighting_potentials[1],
+        contours_equal_potential=true,
+        linecolor=:white,
+        levels=5,
+        title="max tick distance = $max_tick_distance")
+
+    # Plot del detector
+    plot!(plt[i], sim.detector, st=:slice, φ=0, legend=false)
+
+    # Rettangolo
+    plot!(plt[i], x_rect, y_rect,
+        seriestype=:shape,
+        linecolor=:white,
+        lw=1.5,
+        fillalpha=0,
+        label="")
+end
+
+display(plt)
+savefig(plt, "weighting_potential_vs_max_tick_distance.png")
 
 
