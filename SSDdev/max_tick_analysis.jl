@@ -22,14 +22,12 @@ save_sim_path = "saved_simulation/sim.h5"
 #-------- ICPC ILM -----------
 #save_sim_path = "saved_simulation/sim_ILM.h5"
 
-println("dove sono")
-
 # ------------------------
 # SCELTA 
 # ------------------------
 # true  → ricalcola sempre e sovrascrivi
 # false → usa il file salvato (se esiste)
-recalculate = false   # <<<<<<<< CAMBIA QUI
+recalculate = true   # <<<<<<<< CAMBIA QUI
 
 # ------------------------
 # Logica principale
@@ -41,8 +39,9 @@ if isfile(save_sim_path) && !recalculate
 else
     println("🔧 New simulation for the electric potential...")
 
-    #sim = Simulation(SSD_examples[:InvertedCoax])
-    sim = Simulation(SSD_examples[:IVCIlayer])
+    sim = Simulation(SSD_examples[:InvertedCoax])
+    #sim = Simulation(SSD_examples[:IVCIlayer])
+    max_tick_distance = 0.5u"mm"
     sim.detector = SolidStateDetector(sim.detector, contact_id=2, contact_potential=500u"V")
     grid = Grid(sim, max_tick_distance=max_tick_distance)
 
@@ -57,19 +56,9 @@ else
     ssd_write(save_sim_path, sim)
 end
 
-println("Simulating weighting potential ")
+max_tick_distance = 0.3u"mm"
 
-
-Δz = 0.25u"mm"
-f_conversion = sim.world.intervals[3].right / sim.world.intervals[1].right
-# devi ricordarti che dal file yaml le lunghezze vengono espresse in metri
-Δr = sim.world.intervals[1].right * 1000u"mm" / 4
-max_tick_distance = (Δr, 0u"rad", Δz)
-
-#max_tick_distance = 0.25u"mm"
-n_rows, n_cols = 2, 5
-plot_list = []
-
+println("🔧 New simulation for the weighting potential...")
 
 # Calcolo del weighting potential solo per il primo elettrodo
 calculate_weighting_potential!(sim, 1,
@@ -93,6 +82,6 @@ plot!(sim.detector, st=:slice, φ=0, legend=false)
 
 #final_plot = plot(plot_list..., layout=(n_rows, n_cols), size=(2000, 800))
 
-#savefig(p, "plots/array_max_tick/r_z_0.25.png")
+savefig(p, "vediamo.png")
 
 
