@@ -29,7 +29,7 @@ save_sim_path = "saved_simulation/sim.h5"
 # ------------------------
 # true  → ricalcola sempre e sovrascrivi
 # false → usa il file salvato (se esiste)
-recalculate = false   # <<<<<<<< CAMBIA QUI
+recalculate = true   # <<<<<<<< CAMBIA QUI
 
 # ------------------------
 # Logica principale
@@ -40,29 +40,47 @@ if isfile(save_sim_path) && !recalculate
 
 else
     println("🔧 New simulation for the electric potential...")
+    V_bias = 3500u"V"
     max_tick_distance = 0.5u"mm"
-    sim = Simulation(SSD_examples[:InvertedCoax])
+    sim_prova = Simulation(SSD_examples[:InvertedCoax])
     #sim = Simulation(SSD_examples[:IVCIlayer])
-    sim.detector = SolidStateDetector(sim.detector, contact_id=2, contact_potential=500u"V")
-    grid = Grid(sim, max_tick_distance=max_tick_distance)
+    sim_prova.detector = SolidStateDetector(sim_prova.detector, contact_id=2, contact_potential=V_bias)
+    grid = Grid(sim_prova, max_tick_distance=max_tick_distance)
 
 
-    calculate_electric_potential!(sim,
+    calculate_electric_potential!(sim_prova,
         refinement_limits=[0.2, 0.1, 0.05, 0.02],
         verbose=false, #  boolean in the output is produced or not
         depletion_handling=true,  # motiplica epsilon_r per un fattore f nelle regioni non svuotate
         grid=grid)
 
     println("💾 Saving simulation in $save_sim_path")
-    ssd_write(save_sim_path, sim)
+    ssd_write(save_sim_path, sim_prova)
 end
 
 
-Δz = 0.25u"mm"
-f_conversion = sim.world.intervals[3].right / sim.world.intervals[1].right
-# devi ricordarti che dal file yaml le lunghezze vengono espresse in metri
-Δr = sim.world.intervals[1].right * 1000u"mm" / 4
-#max_tick_distance = (Δr, 0u"rad", Δz)
+
+println("calculating weighitng potential")
+calculate_weighting_potential!(sim_prova, 1,
+    refinement_limits=refinement_limits,
+    depletion_handling=true,
+    grid=Grid(sim_prova,
+        for_weighting_potential=true,
+        max_tick_distance=0.3u"mm"))
+
+
+
+p = plot(sim_prova.weighting_potentials[1],
+    contours_equal_potential=true,
+    linecolor=:white,
+    levels=5,
+    title="Bias Potential = $V_bias, max tick distance = $max_tick_distance")
+
+plot!(p, sim_prova.detector, st=:slice, φ=0, legend=false)
+savefig(p, "plots/V_bias_differenti/3500V.png")
+
+
+
 
 
 #max_tick_distance = 0.25u"mm"
@@ -83,7 +101,7 @@ for max_tick_distance in max_tick_array
             max_tick_distance=max_tick_distance))
 end
 
-=#
+
 
 
 max_tick_distance = 0.5u"mm"
@@ -96,11 +114,11 @@ max_tick_array = [0.5u"mm", 0.45u"mm", 0.4u"mm", 0.35u"mm", 0.3u"mm", 0.25u"mm",
 n = length(max_tick_array)
 
 # Creiamo una griglia di subplot (ad esempio 2 colonne)
-ncols = 3
+ncols = 4
 nrows = ceil(Int, n / ncols)
 
 # Preparo il layout
-plt = plot(layout=(nrows, ncols), size=(800, 400 * nrows))
+plt = plot(layout=(nrows, ncols), size=(1200, 800 * nrows))
 
 # Coordinate del rettangolo
 x_min = 0.015
@@ -145,4 +163,4 @@ end
 display(plt)
 savefig(plt, "weighting_potential_vs_max_tick_distance.png")
 
-
+==#
