@@ -1035,7 +1035,7 @@ function _calculate_potential!(sim::Simulation{T,CS}, potential_type::UnionAll, 
                     paint_contacts=paint_contacts,
                     sor_consts=is_last_ref ? T(1) : sor_consts)
             else
-                println("Refinement step $iref:")
+                println("Refinement step $(refinement_limits[iref]):")
                 max_diffs = abs.(ref_limits)
                 refine!(sim, WeightingPotential, contact_id, max_diffs, new_min_tick_distance)
                 nt = guess_nt ? _guess_optimal_number_of_threads_for_SOR(size(sim.weighting_potentials[contact_id].grid), max_nthreads[iref+1], CS) : max_nthreads[iref+1]
