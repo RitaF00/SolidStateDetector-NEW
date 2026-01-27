@@ -495,12 +495,13 @@ apply_initial_state!(sim, ElectricPotential, paint_contacts = false)
 """
 function apply_initial_state!(sim::Simulation{T,CS}, ::Type{ElectricPotential}, grid::Grid{T}=Grid(sim);
     not_only_paint_contacts::Bool=true, paint_contacts::Bool=true)::Nothing where {T<:SSDFloat,CS}
+    #not_only_paint_contacts::Bool=true, paint_contacts::Bool=true) where {T<:SSDFloat,CS}
     pcs = PotentialCalculationSetup(
         sim.detector, grid, sim.medium;
         use_nthreads=_guess_optimal_number_of_threads_for_SOR(size(grid), Base.Threads.nthreads(), CS),
         not_only_paint_contacts, paint_contacts
     )
-
+    println("apply initial state : update `sim.electric_potential`, `sim.q_eff_imp`, `sim.q_eff_fix`, `sim.ϵ` and `sim.point_types`")
     sim.q_eff_imp = EffectiveChargeDensity(EffectiveChargeDensityArray(pcs), grid)
     sim.imp_scale = ImpurityScale(ImpurityScaleArray(pcs), grid)
     sim.q_eff_fix = EffectiveChargeDensity(FixedEffectiveChargeDensityArray(pcs), grid)
@@ -508,6 +509,7 @@ function apply_initial_state!(sim::Simulation{T,CS}, ::Type{ElectricPotential}, 
     sim.point_types = PointTypes(PointTypeArray(pcs), grid)
     sim.electric_potential = ElectricPotential(ElectricPotentialArray(pcs), grid)
     nothing
+    #return pcs
 end
 
 """
@@ -533,6 +535,7 @@ It overwrites `sim.weighting_potentials[contact_id]` with the fixed values on th
 apply_initial_state!(sim, WeightingPotential, 1) # =>  applies initial state for weighting potential of contact with id 1
 ```
 """
+# forma corretta sim::Simulation{T,CS}
 function apply_initial_state!(sim::Simulation{T}, ::Type{WeightingPotential}, contact_id::Int, grid::Grid{T}=Grid(sim);
     not_only_paint_contacts::Bool=true, paint_contacts::Bool=true, depletion_handling::Bool=false)::Nothing where {T<:SSDFloat}
     pcs = PotentialCalculationSetup(
@@ -640,6 +643,7 @@ function update_till_convergence!(sim::Simulation{T,CS},
     sim.electric_potential = ElectricPotential(ElectricPotentialArray(pcs), grid)
     sim.point_types = PointTypes(PointTypeArray(pcs), grid)
 
+    # è l'errore per il quale si ferma la convegenza
     cf
 end
 
@@ -745,7 +749,7 @@ end
     refine!(sim::Simulation{T}, ::Type{ElectricPotential}, max_diffs::Tuple, minimum_distances::Tuple, kwargs...)
 
 Takes the current state of `sim.electric_potential` and refines it with respect to the input arguments
-`max_diffs` and `minimum_distances` by
+`max_diffs` (potential units) and `minimum_distances` (mm units) by
 
 1. extending the `grid` of `sim.electric_potential` to be a closed grid in all dimensions,
 2. refining the axis of the grid based on `max_diffs` and `minimum_distances`:
@@ -816,6 +820,9 @@ function refine!(sim::Simulation{T}, ::Type{WeightingPotential}, contact_id::Int
     sim.weighting_potentials[contact_id] = refine_scalar_potential(sim.weighting_potentials[contact_id], max_diffs, minimum_distances)
     nothing
 end
+
+
+
 
 """
     compute_min_tick_distance(grid)
@@ -922,7 +929,7 @@ function _calculate_potential!(sim::Simulation{T,CS}, potential_type::UnionAll, 
                 T(to_internal_units(min_tick_distance[3]))
             end
         end
-
+        # refinement
         refine = !ismissing(refinement_limits)
         if !(refinement_limits isa Vector)
             refinement_limits = [refinement_limits]
@@ -1011,17 +1018,25 @@ function _calculate_potential!(sim::Simulation{T,CS}, potential_type::UnionAll, 
         end
     end
 
+    # in initialize definisco lo stato iniziale e applico il primo calcolo del potenziale con la griglia più grezza che abbiamo
+    # il valore del potenziale aggiornato; in refinement non partiamo da 'zero'
+
     # --- Refinement ---
     if refine
         for iref in 1:n_refinement_steps
+            # dopo il 3 step o all'ultimo passo disattivi OR e metti ω_SOR  a 0
             is_last_ref = iref >= 3 || iref == n_refinement_steps
             ref_limits = T.(_extend_refinement_limits(refinement_limits[iref]))
             if isEP
+                # deifnisco qual è la soglia del potenziale del refinement
+                # se ho il potenizale elettrico e ho inserito ΔV, allora il limite è ref*ΔV
+                # altrimeenti calcola il potenziale di bais come la differenza tra il minimo ed il massimo 
                 max_diffs = if iszero(bias_voltage)
                     abs.(ref_limits .* (extrema(sim.electric_potential.data) |> e -> e[2] - e[1]))
                 else
                     abs.(ref_limits .* bias_voltage)
                 end
+                # qui avviene il reifnement vero e roprio
                 refine!(sim, ElectricPotential, max_diffs, new_min_tick_distance)
                 nt = guess_nt ? _guess_optimal_number_of_threads_for_SOR(size(sim.electric_potential.grid), max_nthreads[iref+1], CS) : max_nthreads[iref+1]
                 verbose && println("Grid size: $(size(sim.electric_potential.data)) - $(onCPU ? "using $(nt) threads now" : "GPU")")
@@ -1051,7 +1066,10 @@ function _calculate_potential!(sim::Simulation{T,CS}, potential_type::UnionAll, 
                     sor_consts=is_last_ref ? T(1) : sor_consts)
 
 
+                # questi son miei check e il mio codice
+
                 # --- CALCOLO E STAMPA MINIMO POTENZIALE PESATO ---
+                #=
                 if isWP
                     wp_grid = grid
                     wp_data = sim.weighting_potentials[contact_id].data
@@ -1072,9 +1090,6 @@ function _calculate_potential!(sim::Simulation{T,CS}, potential_type::UnionAll, 
                     # Trovo gli indici corrispondenti agli intervalli
                     r_indices = findall(r -> r_min_val <= r <= r_max_val, wp_grid.axes[1].ticks)
                     z_indices = findall(z -> z_min_val <= z <= z_max_val, wp_grid.axes[3].ticks)
-
-
-
 
                     # Inizializzo variabili
                     min_val = Inf
@@ -1107,6 +1122,7 @@ function _calculate_potential!(sim::Simulation{T,CS}, potential_type::UnionAll, 
                     println("🔎​ Minimo del potenziale pesato: $min_val")
                     println("Posizione del minimo: r=$(min_r), φ=$(min_phi), z=$(min_z)")
                 end
+                =#
             end
         end
     end
