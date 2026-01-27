@@ -822,6 +822,16 @@ function refine!(sim::Simulation{T}, ::Type{WeightingPotential}, contact_id::Int
 end
 
 
+"""
+riscrivo la funzione di refine_max_tick! così da tenere inn considerazione il nuovo reifnement faatto sulla griglia
+"""
+function refine_max_tick!(sim::Simulation{T}, ::Type{WeightingPotential}, contact_id::Int,
+    max_tick::NTuple{3,<:Unitful.Length}=(0u"mm", 0u"mm", 0u"mm"),
+    minimum_distances::NTuple{3,<:Unitful.Length}=(0u"mm", 0u"mm", 0u"mm")) where {T<:SSDFloat}
+    println("Refining weighting potential grid for contact id $contact_id with max tick distances $(max_tick) and minimum distances $(minimum_distances)...")
+    sim.weighting_potentials[contact_id] = refine_scalar_potential_by_tick_distance(sim.weighting_potentials[contact_id], max_tick, minimum_distances)
+    nothing
+end
 
 
 """
