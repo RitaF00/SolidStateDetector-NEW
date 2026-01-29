@@ -58,14 +58,7 @@ else
 end
 
 
-Δz = 0.25u"mm"
-f_conversion = sim.world.intervals[3].right / sim.world.intervals[1].right
-# devi ricordarti che dal file yaml le lunghezze vengono espresse in metri
-Δr = sim.world.intervals[1].right * 1000u"mm" / 4
-#max_tick_distance = (Δr, 0u"rad", Δz)
 
-
-#max_tick_distance = 0.25u"mm"
 n_rows, n_cols = 2, 5
 plot_list = []
 
@@ -76,24 +69,45 @@ refinement_limits = [0.2, 0.1, 0.05, 0.02]
 
 # Calcolo del weighting potential solo per il primo elettrodo
 max_tick_distance = 0.1u"mm"
-println(" max_tick_distance = $max_tick_distance ")
 calculate_weighting_potential!(sim, 1,
     refinement_limits=refinement_limits,
     depletion_handling=true,
     grid=Grid(sim,
-        for_weighting_potential=true,
-        max_tick_distance=max_tick_distance))
+        for_weighting_potential=true))
+#max_tick_distance=max_tick_distance))
 
+
+
+
+
+wp = sim.weighting_potentials[1]
+
+r_ticks = wp.grid.axes[1].ticks   # r
+z_ticks = wp.grid.axes[3].ticks   # z
+
+rmin, rmax = ustrip.(u"m", (0.015u"m", 0.02u"m"))
+zmin, zmax = ustrip.(u"m", (0.02u"m", 0.03u"m"))
+
+r_inds = findall(r -> rmin ≤ r ≤ rmax, r_ticks)
+z_inds = findall(z -> zmin ≤ z ≤ zmax, z_ticks)
+
+isempty(r_inds) && error("No points found in the r interval")
+isempty(z_inds) && error("No points found in the z interval")
+
+vals = wp.data[r_inds, 1, z_inds]
+min_wp = minimum(vals)
+
+println(">>> Min WeightingPotential in the test volume = $min_wp")
 
 p = plot(sim.weighting_potentials[1],
     contours_equal_potential=true,
     linecolor=:white,
     levels=5,
-    title="max tick distance = $max_tick_distance")
+    title="default max tick distance",)
 
 # Plot del detector
 plot!(sim.detector, st=:slice, φ=0, legend=false)
-savefig(p, "0.1mm.png")
+savefig(p, "default_max_tick_distance.png")
 
 
 #=
