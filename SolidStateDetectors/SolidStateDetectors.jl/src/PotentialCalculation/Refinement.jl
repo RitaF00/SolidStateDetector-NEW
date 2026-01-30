@@ -48,13 +48,20 @@ end
 
 
 function refine_scalar_potential_by_tick_distance(p::ScalarPotential{T},
-    max_tick::NTuple{3,<:Unitful.Length},
-    minimum_distances::NTuple{3,<:Unitful.Length};
+    max_tick::NTuple{3,Quantity},
+    minimum_distances::NTuple{3,Quantity};
     only2d::Val{only_2d}=Val(size(p.data, 2) == 1)) where {T,only_2d}
 
     # conversione UNA VOLTA SOLA
-    max_tick_T = T.(ustrip.(u"mm", max_tick))
-    min_dist_T = T.(ustrip.(u"mm", minimum_distances))
+    # Conversione separata per r, φ, z
+    max_tick_T = (T(ustrip(u"mm", max_tick[1])),
+        T(ustrip(u"rad", max_tick[2])),
+        T(ustrip(u"mm", max_tick[3])))
+
+    min_dist_T = (T(ustrip(u"mm", minimum_distances[1])),
+        T(ustrip(u"rad", minimum_distances[2])),
+        T(ustrip(u"mm", minimum_distances[3])))
+
 
     closed_potential = _get_closed_potential(p)
     new_grid = _create_refined_grid(closed_potential, max_tick_T, min_dist_T)

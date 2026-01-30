@@ -45,22 +45,27 @@ end
 # probabilmente partire dal max tick di defautl e poi raffinare suil max_tick è troppo. ( passiamo da 20 mm a 0.5 mm)
 # provo a partire da 2 il primo max tick e poi raffinare
 
-max_tick_fin = 0.01u"mm"
+max_tick_fin = 0.01u"mm" # oppure max_tick_fin = [0.01u"mm", 1u"rad", 0.01u"mm"]
+max_tick_min = 5u"mm"  # oppure max_tick_min = [51u"mm", 1u"rad", 5u"mm"]
 
-
-
-
-
+α = 2.0
 fraction = [2.5, 2, 2]
 
+P = prod(fraction)
+initial_tick = P * max_tick_fin * α
+initial_tick = max(initial_tick, max_tick_min)
 
 
+println("grid_final = ", max_tick_fin)
+println("Prodotto refinement = ", P)
+println("grid_init = ", initial_tick)
 
 max_tick_array = (max_tick_fin * fraction[1] * fraction[2] * fraction[3], max_tick_fin * fraction[1] * fraction[2],
     max_tick_fin * fraction[1],
     max_tick_fin)
 
-initial_tick = max_tick_array[1] * 5
+println("max tick array = ", max_tick_array)
+
 
 #max_tick_array = (0.5u"mm", 0.35u"mm", 0.2u"mm", 0.1u"mm")
 println("=== Starting Weighting Potential calculation with initial max tick = $initial_tick ===")
@@ -87,8 +92,8 @@ n_refinement_steps = length(refinement_limits)
 
 for max_tick in max_tick_array
     println(" Applying max tick distance = $max_tick ")
-    SolidStateDetectors.refine_max_tick!(sim, WeightingPotential, 1, (max_tick, max_tick, max_tick),
-        (1e-15u"mm", 1e-15u"mm", 1e-15u"mm")) # qui metterò i valori con la fuzione di claudia
+    SolidStateDetectors.refine_max_tick!(sim, WeightingPotential, 1, (max_tick, 1u"rad", max_tick),
+        (1e-15u"mm", 1e-15u"rad", 1e-15u"mm")) # qui metterò i valori con la fuzione di claudia
     SolidStateDetectors.update_till_convergence!(sim, WeightingPotential, 1, depletion_handling=true, verbose=true)
     println("r length: ", length(sim.weighting_potentials[1].grid.axes[1].ticks))
     println("ϕ length: ", length(sim.weighting_potentials[1].grid.axes[2].ticks))
@@ -161,3 +166,4 @@ plot!(x_rect, y_rect,
 )
 
 savefig(p, "notebooks/new_refinement_on_grid/plot_new_refinement/ref_max_tick_$max_tick_fin smaller_initial_grid.png")
+

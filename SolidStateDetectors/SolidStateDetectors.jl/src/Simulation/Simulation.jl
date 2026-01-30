@@ -825,12 +825,27 @@ end
 """
 riscrivo la funzione di refine_max_tick! così da tenere inn considerazione il nuovo reifnement faatto sulla griglia
 """
-function refine_max_tick!(sim::Simulation{T}, ::Type{WeightingPotential}, contact_id::Int,
-    max_tick::NTuple{3,<:Unitful.Length}=(0u"mm", 0u"mm", 0u"mm"),
-    minimum_distances::NTuple{3,<:Unitful.Length}=(0u"mm", 0u"mm", 0u"mm")) where {T<:SSDFloat}
-    println("Refining weighting potential grid for contact id $contact_id with max tick distances $(max_tick) and minimum distances $(minimum_distances)...")
-    sim.weighting_potentials[contact_id] = refine_scalar_potential_by_tick_distance(sim.weighting_potentials[contact_id], max_tick, minimum_distances)
-    nothing
+function refine_max_tick!(
+    sim::Simulation{T},
+    ::Type{WeightingPotential},
+    contact_id::Int,
+    max_tick::NTuple{3,Quantity}=(0u"mm", 1u"rad", 0u"mm"),
+    minimum_distances::NTuple{3,Quantity}=(0u"mm", 1u"rad", 0u"mm")
+) where {T<:SSDFloat}
+
+    println(
+        "Refining weighting potential grid for contact id $contact_id " *
+        "with max tick distances $(max_tick) and minimum distances $(minimum_distances)..."
+    )
+
+    sim.weighting_potentials[contact_id] =
+        refine_scalar_potential_by_tick_distance(
+            sim.weighting_potentials[contact_id],
+            max_tick,
+            minimum_distances
+        )
+
+    return nothing
 end
 
 
@@ -1074,65 +1089,6 @@ function _calculate_potential!(sim::Simulation{T,CS}, potential_type::UnionAll, 
                     not_only_paint_contacts=not_only_paint_contacts,
                     paint_contacts=paint_contacts,
                     sor_consts=is_last_ref ? T(1) : sor_consts)
-
-
-                # questi son miei check e il mio codice
-
-                # --- CALCOLO E STAMPA MINIMO POTENZIALE PESATO ---
-                #=
-                if isWP
-                    wp_grid = grid
-                    wp_data = sim.weighting_potentials[contact_id].data
-
-                    wp_grid = sim.weighting_potentials[contact_id].grid
-                    wp_data = sim.weighting_potentials[contact_id].data
-
-                    # Numero totale di punti della griglia lungo r e z
-                    n_r_total = length(wp_grid.axes[1].ticks)
-                    n_z_total = length(wp_grid.axes[3].ticks)
-                    total_points_grid = n_r_total * n_z_total
-                    println("📏​  Numero punti considerati: r = $n_r_total, z = $n_z_total, prodotto = $total_points_grid")
-
-                    # Intervalli di ricerca
-                    r_min_val, r_max_val = 0.015, 0.02
-                    z_min_val, z_max_val = 0.02, 0.04
-
-                    # Trovo gli indici corrispondenti agli intervalli
-                    r_indices = findall(r -> r_min_val <= r <= r_max_val, wp_grid.axes[1].ticks)
-                    z_indices = findall(z -> z_min_val <= z <= z_max_val, wp_grid.axes[3].ticks)
-
-                    # Inizializzo variabili
-                    min_val = Inf
-                    min_r = min_phi = min_z = NaN
-
-                    # Loop per trovare il minimo e la posizione
-                    for i in r_indices, k in z_indices
-                        if length(wp_grid.axes) == 2  # 2D grid [r, z]
-                            val = wp_data[i, k]
-                            if val < min_val
-                                min_val = val
-                                min_r = wp_grid.axes[1].ticks[i]
-                                min_z = wp_grid.axes[2].ticks[k]  # axes[2] = z in 2D
-                                min_phi = 0.0  # non esiste φ in 2D
-                            end
-                        else  # 3D grid [r, phi, z]
-                            for j in 1:length(wp_grid.axes[2].ticks)
-                                val = wp_data[i, j, k]
-                                if val < min_val
-                                    min_val = val
-                                    min_r = wp_grid.axes[1].ticks[i]
-                                    min_phi = wp_grid.axes[2].ticks[j]
-                                    min_z = wp_grid.axes[3].ticks[k]
-                                end
-                            end
-                        end
-                    end
-
-                    # Stampa finale coerente
-                    println("🔎​ Minimo del potenziale pesato: $min_val")
-                    println("Posizione del minimo: r=$(min_r), φ=$(min_phi), z=$(min_z)")
-                end
-                =#
             end
         end
     end
@@ -1166,6 +1122,9 @@ function _calculate_potential!(sim::Simulation{T,CS}, potential_type::UnionAll, 
 
     nothing
 end
+
+
+
 
 
 
