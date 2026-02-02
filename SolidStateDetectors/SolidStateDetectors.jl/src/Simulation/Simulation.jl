@@ -829,9 +829,27 @@ function refine_max_tick!(
     sim::Simulation{T},
     ::Type{WeightingPotential},
     contact_id::Int,
-    max_tick::NTuple{3,Quantity}=(0u"mm", 1u"rad", 0u"mm"),
-    minimum_distances::NTuple{3,Quantity}=(0u"mm", 1u"rad", 0u"mm")
+    max_tick_input::Union{Quantity,AbstractVector{<:Quantity},NTuple{3,Quantity}}=0u"mm",
+    minimum_distances_input::Union{Quantity,AbstractVector{<:Quantity},NTuple{3,Quantity}}=0u"mm"
 ) where {T<:SSDFloat}
+
+    # --- Normalizza max_tick ---
+    max_tick = if max_tick_input isa Quantity
+        (max_tick_input, 0u"rad", max_tick_input)
+    elseif length(max_tick_input) == 3
+        Tuple(max_tick_input)
+    else
+        error("max_tick deve essere un Quantity singolo o una collezione di 3 Quantity")
+    end
+
+    # --- Normalizza minimum_distances ---
+    minimum_distances = if minimum_distances_input isa Quantity
+        (minimum_distances_input, 1e-15u"rad", minimum_distances_input)
+    elseif length(minimum_distances_input) == 3
+        Tuple(minimum_distances_input)
+    else
+        error("minimum_distances deve essere un Quantity singolo o una collezione di 3 Quantity")
+    end
 
     println(
         "Refining weighting potential grid for contact id $contact_id " *
@@ -847,6 +865,7 @@ function refine_max_tick!(
 
     return nothing
 end
+
 
 
 """

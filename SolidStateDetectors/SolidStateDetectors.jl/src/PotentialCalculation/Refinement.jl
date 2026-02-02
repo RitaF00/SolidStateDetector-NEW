@@ -47,28 +47,47 @@ function refine_scalar_potential(p::ScalarPotential{T}, max_diffs::NTuple{3,T}, 
 end
 
 
-function refine_scalar_potential_by_tick_distance(p::ScalarPotential{T},
-    max_tick::NTuple{3,Quantity},
-    minimum_distances::NTuple{3,Quantity};
-    only2d::Val{only_2d}=Val(size(p.data, 2) == 1)) where {T,only_2d}
+function refine_scalar_potential_by_tick_distance(
+    p::ScalarPotential{T},
+    max_tick_input,
+    minimum_distances_input;
+    only2d::Val{only_2d}=Val(size(p.data, 2) == 1)
+) where {T,only_2d}
+    println("Refinement basato sulla distanza tra i tick")
+    # --- Normalizza max_tick ---
+    max_tick = if max_tick_input isa Quantity
+        (max_tick_input, 0u"rad", max_tick_input)
+    elseif length(max_tick_input) == 3
+        Tuple(max_tick_input)
+    else
+        error("max_tick deve essere un Quantity singolo o una collezione di 3 Quantity")
+    end
 
-    # conversione UNA VOLTA SOLA
-    # Conversione separata per r, φ, z
-    max_tick_T = (T(ustrip(u"mm", max_tick[1])),
+    # --- Normalizza minimum_distances ---
+    minimum_distances = if minimum_distances_input isa Quantity
+        (minimum_distances_input, 1e-15u"rad", minimum_distances_input)
+    elseif length(minimum_distances_input) == 3
+        Tuple(minimum_distances_input)
+    else
+        error("minimum_distances deve essere un Quantity singolo o una collezione di 3 Quantity")
+    end
+
+    # Conversione in tipo T
+    max_tick_T = (T(ustrip(u"m", max_tick[1])),
         T(ustrip(u"rad", max_tick[2])),
-        T(ustrip(u"mm", max_tick[3])))
+        T(ustrip(u"m", max_tick[3])))
+
 
     min_dist_T = (T(ustrip(u"mm", minimum_distances[1])),
         T(ustrip(u"rad", minimum_distances[2])),
         T(ustrip(u"mm", minimum_distances[3])))
 
-
     closed_potential = _get_closed_potential(p)
-    new_grid = _create_refined_grid(closed_potential, max_tick_T, min_dist_T)
-    # array vuoto che conterrà il potenziale raffinato
+    #uso quella per la distanza tra i tick
+    new_grid = _create_refined_grid_max_tick_array(closed_potential, max_tick_T, min_dist_T)
     new_data = Array{T,3}(undef, size(new_grid))
+
     if only_2d
-        # interpoalzione bilineare: per ogni punto della NUOV GRIGLIA prende le coordinate fiodiche ed interpreta il valore
         int = interpolate_closed_potential(closed_potential, only2d)
         for i3 in axes(new_data, 3)
             x3 = new_grid.axes[3].ticks[i3]
@@ -90,10 +109,9 @@ function refine_scalar_potential_by_tick_distance(p::ScalarPotential{T},
             end
         end
     end
+
     return _convert_to_original_potential(p, new_data, new_grid)
 end
-
-
 
 
 
@@ -233,16 +251,34 @@ function _refine_axis(ax::DiscreteAxis{T,<:Any,<:Any,ClosedInterval{T}}, ns::Vec
 end
 
 # nel caso preceenre max_dif è il v alore del refinement (massima differenza dei potenziali); io voglio farlo con la distanza tra gli assi
-function _create_refined_grid_max_tick_array(p::ScalarPotential{T,3}, max_tick::NTuple{3,T}, minimum_distances::NTuple{3,T}) where {T}
-    max_tick = broadcast(md -> iszero(md) ? Inf : md, max_tick)
-    # calcolo il nuovo nunero di punti da inserire lungo ogni asse
-    n_1 = floor.(Int, [maximum(abs.(p.grid.axes[1].ticks[i+1] - p.grid.axes[1].ticks[i])) for i in 1:size(p.grid.axes, 1)-1] ./ max_tick[1])
-    n_2 = floor.(Int, [maximum(abs.(p.grid.axes[2].ticks[i+1] - p.grid.axes[2].ticks[i])) for i in 1:size(p.grid.axes, 2)-1] ./ max_tick[2])
-    n_3 = floor.(Int, [maximum(abs.(p.grid.axes[3].ticks[i+1] - p.grid.axes[3].ticks[i])) for i in 1:size(p.grid.axes, 3)-1] ./ max_tick[3])
+function _create_refined_grid_max_tick_array(p::ScalarPotential{T,3},
+    max_tick::NTuple{3,T},
+    minimum_distances::NTuple{3,T}) where {T}
+    println("nuova funzione di refinement basata sulla distanza tra i tick")
+    # sostituisci eventuali max_tick = 0 con Inf
+    max_tick = map(md -> iszero(md) ? Inf : md, max_tick)
+
+    # larghezza delle celle esistenti
+    widths = [diff(p.grid.axes[1].ticks),
+        diff(p.grid.axes[2].ticks),
+        diff(p.grid.axes[3].ticks)]
+
+    # calcola il numero di nuovi punti da inserire tra ogni coppia di tick
+    n_1 = [floor(Int, (p.grid.axes[1].ticks[i+1] - p.grid.axes[1].ticks[i]) / max_tick[1])
+           for i in 1:length(p.grid.axes[1].ticks)-1]
+
+    n_2 = [floor(Int, (p.grid.axes[2].ticks[i+1] - p.grid.axes[2].ticks[i]) / max_tick[2])
+           for i in 1:length(p.grid.axes[2].ticks)-1]
+
+    n_3 = [floor(Int, (p.grid.axes[3].ticks[i+1] - p.grid.axes[3].ticks[i]) / max_tick[3])
+           for i in 1:length(p.grid.axes[3].ticks)-1]
+
     ns = (n_1, n_2, n_3)
-    widths = diff.((p.grid.axes[1].ticks, p.grid.axes[2].ticks, p.grid.axes[3].ticks))
-    # calcolo la larghezza delle nuove celle    
-    sub_widths = broadcast(ia -> [widths[ia][i] / (ns[ia][i] + 1) for i in eachindex(ns[ia])], (1, 2, 3))
+
+    # calcola le larghezze delle nuove celle
+    sub_widths = [[widths[ia][i] / (ns[ia][i] + 1) for i in eachindex(ns[ia])] for ia in 1:3]
+
+    # assicura che le larghezze non siano inferiori alla distanza minima
     for ia in 1:3
         for i in eachindex(ns[ia])
             while sub_widths[ia][i] < minimum_distances[ia] && ns[ia][i] > 0
@@ -251,16 +287,22 @@ function _create_refined_grid_max_tick_array(p::ScalarPotential{T,3}, max_tick::
             end
         end
     end
-    for i in 1:3 # always add an even number of ticks
-        if isodd(sum(ns[i]))
-            i_max_width = findmax(sub_widths[i])[2]
-            ns[i][i_max_width] += 1
-            sub_widths[i][i_max_width] = widths[i][i_max_width] / (ns[i][i_max_width] + 1)
+
+    # garantisce un numero pari di tick
+    for ia in 1:3
+        if isodd(sum(ns[ia]))
+            i_max = findmax(sub_widths[ia])[2]
+            ns[ia][i_max] += 1
+            sub_widths[ia][i_max] = widths[ia][i_max] / (ns[ia][i_max] + 1)
         end
     end
+
+    # crea le nuove assi raffinate come tupla
     new_axes = broadcast(i -> _refine_axis(p.grid.axes[i], ns[i], sub_widths[i]), (1, 2, 3))
+
     return typeof(p.grid)(new_axes)
 end
+
 
 
 

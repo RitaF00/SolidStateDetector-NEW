@@ -68,7 +68,7 @@ max_tick_array = [0.5u"mm", 0.45u"mm", 0.4u"mm", 0.35u"mm", 0.3u"mm", 0.25u"mm",
 refinement_limits = [0.2, 0.1, 0.05, 0.02]
 
 # Calcolo del weighting potential solo per il primo elettrodo
-max_tick_distance = 0.1u"mm"
+max_tick_distance = 1u"mm"
 calculate_weighting_potential!(sim, 1,
     refinement_limits=refinement_limits,
     depletion_handling=true,

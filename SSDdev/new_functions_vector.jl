@@ -50,38 +50,66 @@ end
 # ============================================================
 # max_tick scalare o array
 max_tick_fin = [0.01u"mm", 0.1u"rad", 0.01u"mm"]   # r, φ, z
+max_tick_fin = 0.01u"mm"
 
 
-# --- gestisco max_tick_min in base al tipo di max_tick_fin ---
-if isa(max_tick_fin, Number)
-    max_tick_min = 5u"mm"
-else
-    max_tick_min = [5u"mm", 0u"rad", 5u"mm"]
-end
 α = 2.0
 fraction = [2.5, 2.0, 2.0]
 P = prod(fraction)
 
-# initial tick
-initial_tick = max.(P .* max_tick_fin .* α, max_tick_min)
-initial_tick_for_grid = Tuple(initial_tick)
+# ===============================================
+# Parametri di base
+# ===============================================
+max_tick_fin = 0.01u"mm"            # oppure [0.01u"mm", 0.1u"rad", 0.01u"mm"]
+max_tick_min = 5u"mm"               # oppure [5u"mm", 0u"rad", 5u"mm"]
+α = 2.0
+fraction = [2.5, 2.0, 2.0]     # fattori per il prodotto
+P = prod(fraction)
+
+# ===============================================
+# Costruzione initial_tick coerente con max_tick_fin
+# ===============================================
+if max_tick_fin isa AbstractArray
+    # array di 3 elementi → initial_tick come array di 3 elementi
+    initial_tick = max.(P .* max_tick_fin .* α, max_tick_min)
+    initial_tick_for_grid = Tuple(initial_tick)   # tuple r, φ, z
+else
+    # scalare → initial_tick scalare
+    initial_tick = max(P * max_tick_fin * α, max_tick_min)
+    initial_tick_for_grid = (initial_tick, 0.1u"rad", initial_tick)         # rimane scalare
+end
 
 println("grid_final = ", max_tick_fin)
 println("Prodotto refinement = ", P)
 println("grid_init = ", initial_tick)
 
 # ============================================================
-# COSTRUZIONE MAX TICK ARRAY (livelli di refinement)
+# COSTRUZIONE MAX TICK ARRAY (livelli di refinement) – GENERALIZZATA
 # ============================================================
-levels = reverse(vcat(1.0, cumprod(fraction)))
-# matrice n_levels × n_axes (r, φ, z)
-max_tick_array = hcat([levels[i] .* max_tick_fin for i in eachindex(levels)]...)'
-println("max tick array = ", max_tick_array)
+
+levels = reverse(vcat(1.0, cumprod(fraction)))  # fattori per i livelli
+
+# funzione interna per normalizzare max_tick in tuple di 3 o scalar
+normalize_max_tick(x) = begin
+    if x isa Number || x isa Quantity
+        # scalar → ritorna Quantity scalare
+        return x
+    elseif length(x) == 3
+        # tuple o array di 3 → ritorna tuple di 3
+        return Tuple(x)
+    else
+        error("max_tick deve essere scalar o una collezione di 3 elementi")
+    end
+end
+
+# costruzione max_tick_array generalizzata
+max_tick_array = [normalize_max_tick(level .* max_tick_fin) for level in levels]
 
 println("\nRefinement levels:")
-for i in axes(max_tick_array, 1)
-    println("level $i → ", Tuple(max_tick_array[i, :]))
+for (i, ticks) in enumerate(max_tick_array)
+    println("level $i → ", ticks)
 end
+
 
 # ============================================================
 # INITIAL GRID + WP
@@ -107,12 +135,13 @@ savefig(p, "initial_WP_state.png")
 # REFINEMENT DELLA GRIGLIA
 # ============================================================
 println("\n=== Starting grid refinement ===")
-for i in axes(max_tick_array, 1)
-    ticks = Tuple(max_tick_array[i, :])
+for ticks in max_tick_array
+    # minima distanza sempre tuple di 3
     min_dist = (1e-15u"mm", 1e-15u"rad", 1e-15u"mm")
 
     println("\nApplying max tick distance = ", ticks)
 
+    # se ticks è scalar, rimane scalar, se è tuple di 3, rimane tuple
     SolidStateDetectors.refine_max_tick!(sim, WeightingPotential, 1, ticks, min_dist)
 
     SolidStateDetectors.update_till_convergence!(
@@ -127,6 +156,7 @@ for i in axes(max_tick_array, 1)
     println("max Δr = ", maximum(diff(grid.axes[1].ticks)))
     println("max Δz = ", maximum(diff(grid.axes[3].ticks)))
 end
+
 
 # ============================================================
 # REFINEMENT SUL POTENZIALE

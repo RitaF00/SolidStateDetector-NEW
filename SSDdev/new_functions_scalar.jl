@@ -45,7 +45,7 @@ end
 # probabilmente partire dal max tick di defautl e poi raffinare suil max_tick è troppo. ( passiamo da 20 mm a 0.5 mm)
 # provo a partire da 2 il primo max tick e poi raffinare
 
-max_tick_fin = 0.01u"mm" # oppure max_tick_fin = [0.01u"mm", 1u"rad", 0.01u"mm"]
+max_tick_fin = 0.03u"mm" # oppure max_tick_fin = [0.01u"mm", 1u"rad", 0.01u"mm"]
 max_tick_min = 5u"mm"  # oppure max_tick_min = [51u"mm", 1u"rad", 5u"mm"]
 
 α = 2.0
@@ -76,12 +76,6 @@ println("Initial grid initial state: ", length(sim.weighting_potentials[1].grid.
 
 
 
-p = plot(sim.weighting_potentials[1], size=(400, 400))
-plot!(sim.detector, st=:slice, φ=90u"°", legend=false)
-savefig(p, "initial_WP_state.png")
-
-
-
 """
 inizio con il refinement della griglia 
 """
@@ -98,6 +92,11 @@ for max_tick in max_tick_array
     println("r length: ", length(sim.weighting_potentials[1].grid.axes[1].ticks))
     println("ϕ length: ", length(sim.weighting_potentials[1].grid.axes[2].ticks))
     println("z length: ", length(sim.weighting_potentials[1].grid.axes[3].ticks))
+
+    grid = sim.weighting_potentials[1].grid
+    println("max Δr = ", maximum(diff(grid.axes[1].ticks)), " m")
+    println("max Δz = ", maximum(diff(grid.axes[3].ticks)), " m")
+
 end
 
 
@@ -165,5 +164,5 @@ plot!(x_rect, y_rect,
     label=""
 )
 
-savefig(p, "notebooks/new_refinement_on_grid/plot_new_refinement/ref_max_tick_$max_tick_fin smaller_initial_grid.png")
+savefig(p, "notebooks/new_refinement_on_grid/ne_plots_correceted/ref_max_tick_$max_tick_fin small initial grid.png")
 
