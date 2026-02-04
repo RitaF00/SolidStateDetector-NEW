@@ -11,6 +11,7 @@ using SolidStateDetectors
 using Unitful
 using Plots
 using LegendHDF5IO
+using Printf
 
 gr()  # backend per Plots
 
@@ -48,11 +49,6 @@ end
 # ============================================================
 # SETUP GRID PER WEIGHTING POTENTIAL
 # ============================================================
-# max_tick scalare o array
-max_tick_fin = [0.01u"mm", 0.1u"rad", 0.01u"mm"]   # r, φ, z
-max_tick_fin = 0.01u"mm"
-
-
 α = 2.0
 fraction = [2.5, 2.0, 2.0]
 P = prod(fraction)
@@ -60,7 +56,8 @@ P = prod(fraction)
 # ===============================================
 # Parametri di base
 # ===============================================
-max_tick_fin = 0.01u"mm"            # oppure [0.01u"mm", 0.1u"rad", 0.01u"mm"]
+max_tick_fin = [0.05u"mm", 0.1u"rad", 0.5u"mm"]   # r, φ, z#
+#max_tick_fin = 0.5u"mm"            # oppure [0.01u"mm", 0.1u"rad", 0.01u"mm"]
 max_tick_min = 5u"mm"               # oppure [5u"mm", 0u"rad", 5u"mm"]
 α = 2.0
 fraction = [2.5, 2.0, 2.0]     # fattori per il prodotto
@@ -70,13 +67,22 @@ P = prod(fraction)
 # Costruzione initial_tick coerente con max_tick_fin
 # ===============================================
 if max_tick_fin isa AbstractArray
-    # array di 3 elementi → initial_tick come array di 3 elementi
-    initial_tick = max.(P .* max_tick_fin .* α, max_tick_min)
-    initial_tick_for_grid = Tuple(initial_tick)   # tuple r, φ, z
+    # 3 element array 
+    println("max_tick_fin is an array")
+    tmp = P .* max_tick_fin .* α
+    initial_tick = [
+        max(tmp[1], max_tick_min),
+        tmp[2],  # φ: nessun minimo
+        max(tmp[3], max_tick_min)
+    ]
+    initial_tick = Tuple(initial_tick)   # tuple r, φ, z
 else
-    # scalare → initial_tick scalare
-    initial_tick = max(P * max_tick_fin * α, max_tick_min)
-    initial_tick_for_grid = (initial_tick, 0.1u"rad", initial_tick)         # rimane scalare
+    # scalar
+    println("max_tick_fin is a scalar")
+    tmp = P .* max_tick_fin .* α
+
+    initial_tick = P * max_tick_fin * α
+    initial_tick = max(initial_tick, max_tick_min)
 end
 
 println("grid_final = ", max_tick_fin)
@@ -105,6 +111,7 @@ end
 # costruzione max_tick_array generalizzata
 max_tick_array = [normalize_max_tick(level .* max_tick_fin) for level in levels]
 
+println("=== After the initial state, the max_tick_array for the refinement ===")
 println("\nRefinement levels:")
 for (i, ticks) in enumerate(max_tick_array)
     println("level $i → ", ticks)
@@ -115,21 +122,18 @@ end
 # INITIAL GRID + WP
 # ============================================================
 println("\n=== Starting Weighting Potential calculation with initial max tick = $initial_tick ===")
-new_grid = Grid(sim, max_tick_distance=initial_tick_for_grid)
+new_grid = Grid(sim, max_tick_distance=initial_tick)
 apply_initial_state!(sim, WeightingPotential, 1, new_grid)
 SolidStateDetectors.update_till_convergence!(sim, WeightingPotential, 1, depletion_handling=true, verbose=true)
 
-grid = sim.weighting_potentials[1].grid
+
 println("Initial grid points: ",
-    length(grid.axes[1].ticks), " × ",
-    length(grid.axes[2].ticks), " × ",
-    length(grid.axes[3].ticks)
+    length(sim.weighting_potentials[1].grid.axes[1].ticks), " × ",
+    length(sim.weighting_potentials[1].grid.axes[2].ticks), " × ",
+    length(sim.weighting_potentials[1].grid.axes[3].ticks)
 )
 
-# plot iniziale
-p = plot(sim.weighting_potentials[1], size=(400, 400))
-plot!(sim.detector, st=:slice, φ=90u"°", legend=false)
-savefig(p, "initial_WP_state.png")
+
 
 # ============================================================
 # REFINEMENT DELLA GRIGLIA
@@ -153,8 +157,8 @@ for ticks in max_tick_array
     grid = sim.weighting_potentials[1].grid
     println("r length: ", length(grid.axes[1].ticks))
     println("z length: ", length(grid.axes[3].ticks))
-    println("max Δr = ", maximum(diff(grid.axes[1].ticks)))
-    println("max Δz = ", maximum(diff(grid.axes[3].ticks)))
+    @printf("max Δr = %.5g mm\n", maximum(diff(grid.axes[1].ticks)) * 1000)
+    @printf("max Δz = %.5g mm\n", maximum(diff(grid.axes[3].ticks)) * 1000)
 end
 
 
@@ -169,10 +173,9 @@ for iref in 1:n_refinement_steps
     SolidStateDetectors.refine!(sim, WeightingPotential, 1, max_diff_array)
     SolidStateDetectors.update_till_convergence!(sim, WeightingPotential, 1, depletion_handling=true, verbose=true)
 
-    grid = sim.weighting_potentials[1].grid
-    println("r length: ", length(grid.axes[1].ticks))
-    println("ϕ length: ", length(grid.axes[2].ticks))
-    println("z length: ", length(grid.axes[3].ticks))
+    println("r length: ", length(sim.weighting_potentials[1].grid.axes[1].ticks))
+    println("ϕ length: ", length(sim.weighting_potentials[1].grid.axes[2].ticks))
+    println("z length: ", length(sim.weighting_potentials[1].grid.axes[3].ticks))
 end
 
 # ============================================================
@@ -198,19 +201,37 @@ println(">>> Min WeightingPotential in the test volume = $min_wp")
 # ============================================================
 # PLOT CON RETTANGOLO DI CONTROLLO
 # ============================================================
+
+
+if max_tick_fin isa AbstractArray
+    r_mm = ustrip(u"mm", max_tick_fin[1])
+    phi_r = ustrip(u"rad", max_tick_fin[2])
+    z_mm = ustrip(u"mm", max_tick_fin[3])
+
+    title_str = @sprintf(
+        "max tick distance = r=%.3g mm, phi=%.3g rad, z=%.3g mm",
+        r_mm, phi_r, z_mm
+    )
+else
+    r_mm = ustrip(u"mm", max_tick_fin)
+    phi_r = ustrip(u"rad", 0.1u"rad")
+    z_mm = ustrip(u"mm", max_tick_fin)
+    title_str = @sprintf(
+        "max tick distance = r=%.3g mm, phi=%.3g rad, z=%.3g mm",
+        r_mm, phi_r, z_mm
+    )
+end
+
 x_min, x_max = 0.015, 0.020
 y_min, y_max = 0.02, 0.03
 x_rect = [x_min, x_max, x_max, x_min, x_min]
 y_rect = [y_min, y_min, y_max, y_max, y_min]
-
-p = plot(
-    sim.weighting_potentials[1],
+p = plot(sim.weighting_potentials[1],
     contours_equal_potential=true,
     linecolor=:white,
     levels=5,
-    title="max tick distance = $(max_tick_array[end, :])",
-    size=(400, 400)
-)
+    title=title_str,
+    size=(700, 400))
 plot!(sim.detector, st=:slice, φ=90u"°", legend=false)
 plot!(x_rect, y_rect,
     seriestype=:shape,
@@ -220,4 +241,12 @@ plot!(x_rect, y_rect,
     label=""
 )
 
-savefig(p, "notebooks/new_refinement_on_grid/plot_new_refinement/ref_max_tick.png")
+fname = @sprintf(
+    "ref_max_tick_r%.3gmm_phi%.3grad_z%.3gmm.png",
+    r_mm, phi_r, z_mm
+)
+
+savefig(p, joinpath(
+    "notebooks/new_refinement_on_grid/plot_vector_initial-grid",
+    fname
+))
