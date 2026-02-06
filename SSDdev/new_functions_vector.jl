@@ -56,11 +56,12 @@ P = prod(fraction)
 # ===============================================
 # Parametri di base
 # ===============================================
-max_tick_fin = [0.05u"mm", 0.1u"rad", 0.5u"mm"]   # r, φ, z#
-#max_tick_fin = 0.5u"mm"            # oppure [0.01u"mm", 0.1u"rad", 0.01u"mm"]
+#max_tick_fin = [0.05u"mm", 0.1u"rad", 0.5u"mm"]   # r, φ, z#
+max_tick_fin = 0.5u"mm"            # oppure [0.01u"mm", 0.1u"rad", 0.01u"mm"]
 max_tick_min = 5u"mm"               # oppure [5u"mm", 0u"rad", 5u"mm"]
 α = 2.0
-fraction = [2.5, 2.0, 2.0]     # fattori per il prodotto
+fraction = [2.5, 2.0, 2.0]
+#fraction = [2.5, 2.0]   # fattori per il prodotto
 P = prod(fraction)
 
 # ===============================================
@@ -141,7 +142,7 @@ println("Initial grid points: ",
 println("\n=== Starting grid refinement ===")
 for ticks in max_tick_array
     # minima distanza sempre tuple di 3
-    min_dist = (1e-15u"mm", 1e-15u"rad", 1e-15u"mm")
+    min_dist = (1e-5, 1e-5, 1e-5)
 
     println("\nApplying max tick distance = ", ticks)
 
@@ -242,11 +243,11 @@ plot!(x_rect, y_rect,
 )
 
 fname = @sprintf(
-    "ref_max_tick_r%.3gmm_phi%.3grad_z%.3gmm.png",
-    r_mm, phi_r, z_mm
+    "ref_max_tick_r%.3gmm__z%.3gmm.png",
+    r_mm, z_mm
 )
 
 savefig(p, joinpath(
-    "notebooks/new_refinement_on_grid/plot_vector_initial-grid",
+    "notebooks/new_refinement_on_grid/vector_3_refinement",
     fname
 ))
