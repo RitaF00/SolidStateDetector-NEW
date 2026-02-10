@@ -46,6 +46,22 @@ else
     ssd_write(save_sim_path, sim)
 end
 
+
+# plot del pot elettrico
+
+pel = plot(sim.electric_potential,
+    contours_equal_potential=true,
+    linecolor=:white,
+    levels=5,
+    size=(700, 400))
+plot!(sim.detector, st=:slice, φ=90u"°", legend=false)
+
+savefig(pel, "electric_pot_OLD_FUNCT.png")
+
+
+
+
+
 # ============================================================
 # SETUP GRID PER WEIGHTING POTENTIAL
 # ============================================================
@@ -56,8 +72,8 @@ P = prod(fraction)
 # ===============================================
 # Parametri di base
 # ===============================================
-#max_tick_fin = [0.05u"mm", 0.1u"rad", 0.5u"mm"]   # r, φ, z#
-max_tick_fin = 0.5u"mm"            # oppure [0.01u"mm", 0.1u"rad", 0.01u"mm"]
+max_tick_fin = [0.5u"mm", 0.1u"rad", 6u"mm"]   # r, φ, z#
+# oppure [0.01u"mm", 0.1u"rad", 0.01u"mm"]
 max_tick_min = 5u"mm"               # oppure [5u"mm", 0u"rad", 5u"mm"]
 α = 2.0
 fraction = [2.5, 2.0, 2.0]

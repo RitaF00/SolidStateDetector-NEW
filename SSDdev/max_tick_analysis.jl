@@ -58,6 +58,13 @@ else
 end
 
 
+pel = plot(sim.electric_potential,
+    contours_equal_potential=true, full_det=true, linecolor=:white,
+    levels=5,
+    size=(700, 400))
+plot!(sim.detector, full_det=true, st=:slice, φ=0)
+
+savefig(pel, "electric_pot_OLD_FUNCT.png")
 
 n_rows, n_cols = 2, 5
 plot_list = []
@@ -72,9 +79,9 @@ max_tick_distance = 1u"mm"
 calculate_weighting_potential!(sim, 1,
     refinement_limits=refinement_limits,
     depletion_handling=true,
-    grid=Grid(sim,
-        for_weighting_potential=true))
-#max_tick_distance=max_tick_distance))
+    #grid=Grid(sim,
+    #    for_weighting_potential=true))
+    max_tick_distance=(0.7500001u"mm", 1u"rad", 1.5000002u"mm"))
 
 
 
@@ -107,7 +114,7 @@ p = plot(sim.weighting_potentials[1],
 
 # Plot del detector
 plot!(sim.detector, st=:slice, φ=0, legend=false)
-savefig(p, "default_max_tick_distance.png")
+savefig(p, "prova_grid_ep.png")
 
 
 #=
