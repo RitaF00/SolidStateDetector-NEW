@@ -49,14 +49,6 @@ end
 
 # plot del pot elettrico
 
-pel = plot(sim.electric_potential,
-    contours_equal_potential=true,
-    linecolor=:white,
-    levels=5,
-    size=(700, 400))
-plot!(sim.detector, st=:slice, φ=90u"°", legend=false)
-
-savefig(pel, "electric_pot_OLD_FUNCT.png")
 
 
 

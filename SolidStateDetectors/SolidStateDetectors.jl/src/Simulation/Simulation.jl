@@ -790,6 +790,7 @@ function refine!(sim::Simulation{T}, ::Type{ElectricPotential},
 end
 
 
+
 """
     refine!(sim::Simulation{T}, ::Type{WeightingPotential}, max_diffs::Tuple{<:Real,<:Real,<:Real}, minimum_distances::Tuple{<:Real,<:Real,<:Real})
 
@@ -822,8 +823,18 @@ function refine!(sim::Simulation{T}, ::Type{WeightingPotential}, contact_id::Int
 end
 
 
+
 """
-riscrivo la funzione di refine_max_tick! così da tenere inn considerazione il nuovo reifnement faatto sulla griglia
+Takes the current state of `sim.weighting_potentials[contact_id]` and refines it with respect to the input arguments
+`max_diffs` and `minimum_distances` by
+
+1. extending the `grid` of `sim.weighting_potentials[contact_id]` to be a closed grid in all dimensions,
+2. refining the axis of the grid based on `max_tick_input` and `minimum_distances`:
+   Insert new ticks between two existing ticks such that the potential difference between each tick becomes
+   smaller than `max_tick_input[i]` (`i` -> dimension) but that the distances between the ticks stays larger than `minimum_distances[i]`, and
+3. creating the new data array for the refined grid and fill it by interpolation of the the initial `grid`.
+
+Logic similar to the previous function BUT the refinement is performed on the grid looking at the spatial distance of 2 consecutive points.
 """
 function refine_max_tick!(
     sim::Simulation{T},
@@ -839,7 +850,7 @@ function refine_max_tick!(
     elseif length(max_tick_input) == 3
         Tuple(max_tick_input)
     else
-        error("max_tick deve essere un Quantity singolo o una collezione di 3 Quantity")
+        error("max_tick_distance must be a Quantity or a collection of 3 Quantities")
     end
 
     # --- Normalizza minimum_distances ---
@@ -852,13 +863,8 @@ function refine_max_tick!(
             minimum_distances_input[3] * u"mm"   # z
         )
     else
-        error("minimum_distances deve essere un Quantity singolo o una collezione di 3 Quantity")
+        error("max_tick_distance must be a Quantity or a collection of 3 Quantities")
     end
-
-    println(
-        "Refining weighting potential grid for contact id $contact_id " *
-        "with max tick distances $(max_tick) and minimum distances $(minimum_distances)..."
-    )
 
     sim.weighting_potentials[contact_id] =
         refine_scalar_potential_by_tick_distance(
@@ -922,6 +928,8 @@ function compute_min_tick_distance(grid::CartesianGrid3D{T}) where {T}
 
     return (Δx, Δy, Δz)
 end
+
+
 
 function _calculate_potential!(sim::Simulation{T,CS}, potential_type::UnionAll, contact_id::Union{Missing,Int}=missing;
     convergence_limit::Real=1e-7,
@@ -1147,12 +1155,11 @@ function _calculate_potential!(sim::Simulation{T,CS}, potential_type::UnionAll, 
 end
 
 
-"""
-definisco ua funziona provvisoria per applicare la condizione sul weightinng potential
 
-Aggiungo anche una funzione per creare i vari livelli
-"""
-normalize_max_tick(x) = begin
+
+
+
+function normalize_max_tick(x)
     if x isa Number || x isa Quantity
         # scalar → ritorna Quantity scalare
         return x
@@ -1160,7 +1167,7 @@ normalize_max_tick(x) = begin
         # tuple o array di 3 → ritorna tuple di 3
         return Tuple(x)
     else
-        error("max_tick deve essere scalar o una collezione di 3 elementi")
+        error("max_tick_distance must be a scalar or a 3-elements array")
     end
 end
 
@@ -1176,6 +1183,13 @@ end
 function scale_tick(mt, level, refine)
     refine ? level * mt : mt
 end
+
+
+"""
+new function fro the simulation of the potentials.
+    - if calculation the Ep --> no changes
+    - if calculation the WP : new refinement performed on the grid if the max_tick_distance (mtd) passed is smaller than 1/2 of the default mtd
+"""
 
 function _calculate_potential_max_tick_refinement!(sim::Simulation{T,CS}, potential_type::UnionAll, contact_id::Union{Missing,Int}=missing;
     convergence_limit::Real=1e-7,
@@ -1196,7 +1210,7 @@ function _calculate_potential_max_tick_refinement!(sim::Simulation{T,CS}, potent
     grid::Union{Missing,Grid{T}}=initialize ? missing : (potential_type == ElectricPotential ? sim.electric_potential.grid : sim.weighting_potentials[contact_id].grid)
 )::Nothing where {T<:SSDFloat,CS<:AbstractCoordinateSystem}
 
-    # se la griglia viene passata, allora max_tick_distance diventa inutile
+
 
     if !ismissing(grid) && !ismissing(max_tick_distance)
         @warn "max_tick_distance is ignored when grid is provided explicitly"
@@ -1204,7 +1218,7 @@ function _calculate_potential_max_tick_refinement!(sim::Simulation{T,CS}, potent
         max_tick_distance = missing
     end
 
-    begin # preperations
+    begin
         onCPU = !(device_array_type <: GPUArrays.AnyGPUArray)
         convergence_limit::T = T(convergence_limit)
         isEP::Bool = potential_type == ElectricPotential
@@ -1240,13 +1254,6 @@ function _calculate_potential_max_tick_refinement!(sim::Simulation{T,CS}, potent
             end
         end
 
-
-
-
-
-
-
-        # refinement
         refine = !ismissing(refinement_limits)
         if !(refinement_limits isa Vector)
             refinement_limits = [refinement_limits]
@@ -1309,17 +1316,14 @@ function _calculate_potential_max_tick_refinement!(sim::Simulation{T,CS}, potent
         end
     end
 
-    # --- Inizializzazione potenziale ---
-    max_tick_array = missing
 
-    # definisco anche la variabile per fare il check
+    # threshold for the grid refinement
     world_Δs = width.(sim.world.intervals)
     world_Δr, world_Δφ, world_Δz = world_Δs
 
 
     if initialize
         if isEP
-            println("initial state Ep")
             apply_initial_state!(sim, potential_type, grid; not_only_paint_contacts, paint_contacts)
             update_till_convergence!(sim, potential_type, convergence_limit,
                 n_iterations_between_checks=n_iterations_between_checks,
@@ -1329,70 +1333,36 @@ function _calculate_potential_max_tick_refinement!(sim::Simulation{T,CS}, potent
                 use_nthreads=guess_nt ? _guess_optimal_number_of_threads_for_SOR(size(sim.electric_potential.grid), max_nthreads[1], CS) : max_nthreads[1],
                 sor_consts=sor_consts)
         else
-            println("initial state Wp")
             if !ismissing(max_tick_distance)
                 needs_refinement = (false, false, false)
                 if max_tick_distance isa Tuple
-                    println("max_tick_distance is an array")
                     min_ΔL = [(world_Δr / 8) * 1000 * u"mm", world_Δφ * u"rad", (world_Δz / 8) * 1000 * u"mm"]
-                    #smaller_max_tick_distance = minimum((max_tick_distance[1], max_tick_distance[3]))
+
                     needs_refinement = (
                         max_tick_distance[1] < min_ΔL[1],  # r
-                        false,                           # φ (di solito non raffinata)
+                        false,                           # φ (no refinement)
                         max_tick_distance[3] < min_ΔL[3]    # z
                     )
                 else
                     # scalar
-                    min_ΔL = (min(world_Δr, world_Δz) / (8)) * 1000 * u"mm" # così è scritto in mm
+                    min_ΔL = (min(world_Δr, world_Δz) / (8)) * 1000 * u"mm"
                     needs_refinement = (max_tick_distance < min_ΔL,
                         false,
                         max_tick_distance < min_ΔL)
-                    #smaller_max_tick_distance = max_tick_distance
                 end
 
-                println("serve il refinement : $needs_refinement")
-                """
-                    levels = reverse(vcat(1.0, cumprod(fraction)))
-                    max_tick_array = [normalize_max_tick(level .* max_tick_distance) for level in levels]
-                    """
-
-
                 if any(needs_refinement)
-                    println("max tick distance = $max_tick_distance")
-                    println("Starting weighitn potential calculation but max_tick_dist is smaller than $min_ΔL")
-                    max_tick_min = min_ΔL              # oppure [5u"mm", 0u"rad", 5u"mm"]
+                    max_tick_min = min_ΔL
                     α = 2.0
                     fraction = [2.5]
                     P = prod(fraction)
-
-
                     if @isdefined fraction
                         levels = reverse(vcat(1.0, cumprod(fraction)))
                     else
-                        levels = [1.0]  # solo un livello se fraction non esiste
+                        levels = [1.0]  # just 1 ref
                     end
-                    """
-                    if max_tick_distance isa Tuple
-                        println("max_tick_distance is an array")
-                        tmp = P .* max_tick_distance .* α
-                        initial_tick = [
-                            max(tmp[1], max_tick_min),
-                            tmp[2],  # φ: nessun minimo
-                            max(tmp[3], max_tick_min)
-                        ]
-                        initial_tick = Tuple(initial_tick)   # tuple r, φ, z
-                    else
-                        # scalar
-                        println("max_tick_distance is a scalar")
-                        tmp = P .* max_tick_distance .* α
-                        initial_tick = P * max_tick_distance * α
-                        initial_tick = max(initial_tick, max_tick_min)
-                    end
-                    """
-                    if max_tick_distance isa Tuple
 
-                        #max_tick_min = [(world_Δr / 8) * 1000 * u"mm", world_Δφ * u"rad", (world_Δz / 8) * 1000 * u"mm"]
-
+                    if max_tick_distance isa Tuple
                         initial_tick = (
                             axis_initial_tick(max_tick_distance[1], P, needs_refinement[1], max_tick_min[1]),
                             max_tick_distance[2],   # φ invariato
@@ -1407,8 +1377,7 @@ function _calculate_potential_max_tick_refinement!(sim::Simulation{T,CS}, potent
                             ))
                             for level in levels
                         ]
-                    else #is a scalar
-                        #max_tick_min = min_ΔL
+                    else
                         initial_tick = axis_initial_tick(max_tick_distance, P,
                             needs_refinement[1],
                             max_tick_min)
@@ -1422,21 +1391,7 @@ function _calculate_potential_max_tick_refinement!(sim::Simulation{T,CS}, potent
                             for level in levels
                         ]
                     end
-                    println("Refinement needed:")
-                    println("  r: ", needs_refinement[1])
-                    println("  z: ", needs_refinement[3])
 
-
-                    println("The initial grid is $initial_tick")
-
-
-                    #max_tick_array = [normalize_max_tick(level * max_tick_distance) for level in levels]
-
-
-
-
-                    println("=== After the initial state, the max_tick_array for the refinement ===")
-                    println("\nRefinement levels:")
                     for (i, ticks) in enumerate(max_tick_array)
                         println("level $i → ", ticks)
                     end
@@ -1482,17 +1437,12 @@ function _calculate_potential_max_tick_refinement!(sim::Simulation{T,CS}, potent
         end
     end
 
-    println(" ========== fine inizializzazione ========== ")
-
-    println(" ========== inizio REFINEMENT griglia ========== ")
+    # refinement on the grid set up
     refine_grid = !ismissing(max_tick_array)
 
     if refine_grid
         n_ref_grid_steps = length(max_tick_array)
-
-        # definisco tutti gli n_threads ottimali e nt = guess_nt
         use_nthreads_grid = use_nthreads isa Int ? use_nthreads : copy(use_nthreads)
-
         max_nthreads_grid, guess_nt_grid = if use_nthreads_grid isa Int
             if use_nthreads_grid > Base.Threads.nthreads()
                 use_nthreads_grid = Base.Threads.nthreads()
@@ -1510,13 +1460,9 @@ function _calculate_potential_max_tick_refinement!(sim::Simulation{T,CS}, potent
 
 
         if isWP && !ismissing(max_tick_distance) && any(needs_refinement)
-            println("Grid refinement Wp")
-            println("\n=== Starting grid refinement ===")
             for ireftick in 1:n_ref_grid_steps
                 is_last_ref_grid = ireftick >= 3 || ireftick == n_refinement_steps
-                println("\nApplying max tick distance = ", max_tick_array[ireftick])
                 refine_max_tick!(sim, WeightingPotential, 1, max_tick_array[ireftick], new_min_tick_distance)
-                # ATTENZIONE! VEDERE MEGLIO COME FUNZIONA
                 nt_grid = guess_nt_grid ? _guess_optimal_number_of_threads_for_SOR(size(sim.weighting_potentials[contact_id].grid), max_nthreads_grid[ireftick+1], CS) : max_nthreads_grid[ireftick+1]
                 verbose && println("Grid size: $(size(sim.weighting_potentials[contact_id].data)) - $(onCPU ? "using $(nt_grid) threads now" : "GPU")")
                 update_till_convergence!(sim, potential_type, contact_id, convergence_limit,
@@ -1528,39 +1474,21 @@ function _calculate_potential_max_tick_refinement!(sim::Simulation{T,CS}, potent
                     not_only_paint_contacts=not_only_paint_contacts,
                     paint_contacts=paint_contacts,
                     sor_consts=is_last_ref_grid ? T(1) : sor_consts)
-                grid_wp = sim.weighting_potentials[contact_id].grid
-                println("r length: ", length(grid_wp.axes[1].ticks))
-                println("z length: ", length(grid_wp.axes[3].ticks))
-                println("max Δr =$(maximum(diff(grid_wp.axes[1].ticks)) * 1000) mm")
-                println("max Δz = $(maximum(diff(grid_wp.axes[3].ticks)) * 1000) mm")
             end
-        else
-            println("No grid refinement for Ep")
-
         end
     end
-    println(" ========== fine REFINEMENT griglia ========== ")
 
-
-
-    println(" ========== inizio REFINEMENT potenziale ========== ")
-
+    # from here everything's the same
     if refine
         for iref in 1:n_refinement_steps
-            # dopo il 3 step o all'ultimo passo disattivi OR e metti ω_SOR  a 0
             is_last_ref = iref >= 3 || iref == n_refinement_steps
             ref_limits = T.(_extend_refinement_limits(refinement_limits[iref]))
             if isEP
-                println("potential ref for Ep")
-                # deifnisco qual è la soglia del potenziale del refinement
-                # se ho il potenizale elettrico e ho inserito ΔV, allora il limite è ref*ΔV
-                # altrimeenti calcola il potenziale di bais come la differenza tra il minimo ed il massimo 
                 max_diffs = if iszero(bias_voltage)
                     abs.(ref_limits .* (extrema(sim.electric_potential.data) |> e -> e[2] - e[1]))
                 else
                     abs.(ref_limits .* bias_voltage)
                 end
-                # qui avviene il reifnement vero e roprio
                 refine!(sim, ElectricPotential, max_diffs, new_min_tick_distance)
                 nt = guess_nt ? _guess_optimal_number_of_threads_for_SOR(size(sim.electric_potential.grid), max_nthreads[iref+1], CS) : max_nthreads[iref+1]
                 verbose && println("Grid size: $(size(sim.electric_potential.data)) - $(onCPU ? "using $(nt) threads now" : "GPU")")
@@ -1574,8 +1502,6 @@ function _calculate_potential_max_tick_refinement!(sim::Simulation{T,CS}, potent
                     paint_contacts=paint_contacts,
                     sor_consts=is_last_ref ? T(1) : sor_consts)
             else
-                println("potential ref for Wp")
-                println("Refinement step $(refinement_limits[iref]):")
                 max_diffs = abs.(ref_limits)
                 refine!(sim, WeightingPotential, contact_id, max_diffs, new_min_tick_distance)
                 nt = guess_nt ? _guess_optimal_number_of_threads_for_SOR(size(sim.weighting_potentials[contact_id].grid), max_nthreads[iref+1], CS) : max_nthreads[iref+1]
@@ -1593,8 +1519,6 @@ function _calculate_potential_max_tick_refinement!(sim::Simulation{T,CS}, potent
         end
     end
 
-
-    # --- Altri controlli ---
     if verbose && depletion_handling && isEP
         maximum_applied_potential = maximum(broadcast(c -> c.potential, sim.detector.contacts))
         minimum_applied_potential = minimum(broadcast(c -> c.potential, sim.detector.contacts))
@@ -1622,16 +1546,6 @@ function _calculate_potential_max_tick_refinement!(sim::Simulation{T,CS}, potent
 
     nothing
 end
-
-
-
-
-
-
-
-
-
-
 
 """
     calculate_weighting_potential!(sim::Simulation{T}, contact_id::Int; kwargs...)::Nothing

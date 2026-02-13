@@ -81,7 +81,7 @@ calculate_weighting_potential!(sim, 1,
     depletion_handling=true,
     #grid=Grid(sim,
     #    for_weighting_potential=true))
-    max_tick_distance=(0.7500001u"mm", 1u"rad", 1.5000002u"mm"))
+    max_tick_distance=max_tick_distance)
 
 
 
@@ -106,6 +106,7 @@ min_wp = minimum(vals)
 
 println(">>> Min WeightingPotential in the test volume = $min_wp")
 
+#=
 p = plot(sim.weighting_potentials[1],
     contours_equal_potential=true,
     linecolor=:white,
@@ -117,7 +118,7 @@ plot!(sim.detector, st=:slice, φ=0, legend=false)
 savefig(p, "prova_grid_ep.png")
 
 
-#=
+
 max_tick_distance = 0.5u"mm"
 
 max_tick_array = [0.5u"mm", 0.45u"mm", 0.4u"mm", 0.35u"mm", 0.3u"mm", 0.25u"mm", 0.2u"mm", 0.15u"mm", 0.1u"mm", 0.05u"mm", 0.02u"mm"]

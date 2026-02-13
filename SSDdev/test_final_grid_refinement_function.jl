@@ -76,9 +76,9 @@ println("max Δz = $(maximum(diff(grid_ep.axes[3].ticks)) * 1000) mm")
 
 println("======== Weighting Potential calculation =======")
 
-max_tick_distance = (4u"mm", 1u"rad", 0.6u"mm")
+#max_tick_distance = (4u"mm", 1u"rad", 0.6u"mm")
 
-max_tick_distance = 0.5u"mm"
+max_tick_distance = 1u"mm"
 
 ref_grid = [2.5]
 # inizio del time
@@ -89,7 +89,7 @@ SolidStateDetectors._calculate_potential_max_tick_refinement!(sim,
     WeightingPotential,
     1,
     max_tick_distance=max_tick_distance,
-    grid=sim.electric_potential.grid,
+    #grid=sim.electric_potential.grid,
     depletion_handling=true,
     verbose=true,
     refinement_limits=refinement_limits)
