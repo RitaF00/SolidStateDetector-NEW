@@ -40,7 +40,7 @@ if isfile(save_sim_path) && !recalculate
 
 else
     println("🔧 New simulation for the electric potential...")
-    max_tick_distance = 0.5u"mm"
+    max_tick_distance = 0.05u"mm"
     #sim = Simulation(SSD_examples[:InvertedCoax])
     sim = Simulation(SSD_examples[:IVCIlayer])
     sim.detector = SolidStateDetector(sim.detector, contact_id=2, contact_potential=500u"V")
@@ -64,27 +64,26 @@ pel = plot(sim.electric_potential,
     size=(700, 400))
 plot!(sim.detector, full_det=true, st=:slice, φ=0)
 
-savefig(pel, "electric_pot_OLD_FUNCT.png")
+#savefig(pel, "electric_psmall_grid.png")
+
+
+
 
 n_rows, n_cols = 2, 5
 plot_list = []
 
-max_tick_array = [0.5u"mm", 0.45u"mm", 0.4u"mm", 0.35u"mm", 0.3u"mm", 0.25u"mm", 0.2u"mm", 0.15u"mm", 0.1u"mm"]
+#max_tick_array = [0.5u"mm", 0.45u"mm", 0.4u"mm", 0.35u"mm", 0.3u"mm", 0.25u"mm", 0.2u"mm", 0.15u"mm", 0.1u"mm"]
 
 
 refinement_limits = [0.2, 0.1, 0.05, 0.02]
 
+#=
 # Calcolo del weighting potential solo per il primo elettrodo
-max_tick_distance = 1u"mm"
+max_tick_distance = 0.1u"mm"
 calculate_weighting_potential!(sim, 1,
     refinement_limits=refinement_limits,
     depletion_handling=true,
-    #grid=Grid(sim,
-    #    for_weighting_potential=true))
     max_tick_distance=max_tick_distance)
-
-
-
 
 
 wp = sim.weighting_potentials[1]
@@ -106,22 +105,24 @@ min_wp = minimum(vals)
 
 println(">>> Min WeightingPotential in the test volume = $min_wp")
 
-#=
+
+
+
 p = plot(sim.weighting_potentials[1],
     contours_equal_potential=true,
     linecolor=:white,
     levels=5,
-    title="default max tick distance",)
+)
 
 # Plot del detector
 plot!(sim.detector, st=:slice, φ=0, legend=false)
-savefig(p, "prova_grid_ep.png")
-
+savefig(p, "CM_napoli/weight_pot1_$max_tick_distance.png")
+=#
 
 
 max_tick_distance = 0.5u"mm"
 
-max_tick_array = [0.5u"mm", 0.45u"mm", 0.4u"mm", 0.35u"mm", 0.3u"mm", 0.25u"mm", 0.2u"mm", 0.15u"mm", 0.1u"mm", 0.05u"mm", 0.02u"mm"]
+max_tick_array = [0.3u"mm"]
 
 
 
@@ -129,8 +130,8 @@ max_tick_array = [0.5u"mm", 0.45u"mm", 0.4u"mm", 0.35u"mm", 0.3u"mm", 0.25u"mm",
 n = length(max_tick_array)
 
 # Creiamo una griglia di subplot (ad esempio 2 colonne)
-ncols = 4
-nrows = ceil(Int, n / ncols)
+ncols = 3
+nrows = 1
 
 # Preparo il layout
 plt = plot(layout=(nrows, ncols), size=(1200, 800 * nrows))
@@ -165,17 +166,9 @@ for (i, max_tick_distance) in enumerate(max_tick_array)
 
     # Plot del detector
     plot!(plt[i], sim.detector, st=:slice, φ=0, legend=false)
-
-    # Rettangolo
-    plot!(plt[i], x_rect, y_rect,
-        seriestype=:shape,
-        linecolor=:white,
-        lw=1.5,
-        fillalpha=0,
-        label="")
 end
 
 display(plt)
 savefig(plt, "weighting_potential_vs_max_tick_distance.png")
 
-=#
+

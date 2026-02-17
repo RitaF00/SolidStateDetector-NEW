@@ -17,7 +17,7 @@ T = Float32
 
 save_sim_path = "saved_simulation/sim_sf.h5"
 
-recalculate = false   # <<<<<<<< CAMBIA QUI
+recalculate = true   # <<<<<<<< CAMBIA QUI
 if isfile(save_sim_path) && !recalculate
     println("⚡ Upoload simulation saved in : $save_sim_path")
     sim_sf = ssd_read(save_sim_path, Simulation)
@@ -34,6 +34,7 @@ else
     calculate_electric_field!(sim_sf)
     println("🔧 New simulation for the weighting potential...")
     calculate_weighting_potential!(sim_sf, 1, refinement_limits=[0.2, 0.1]; grid=sim_sf.electric_potential.grid)
+    calculate_weighting_potential!(sim_sf, 2, refinement_limits=[0.2, 0.1]; grid=sim_sf.electric_potential.grid)
 
     println("💾 Saving simulation in $save_sim_path")
     ssd_write(save_sim_path, sim_sf)
@@ -118,15 +119,10 @@ p = plot(
                 length(sim.weighting_potentials[1].grid.φ) == 1 ? sim.point_types.data : SolidStateDetectors.get_2π_potential(sim.point_types).data
             ), 0 => T(NaN)),
         sim.weighting_potentials[1].grid
-    ), full_det=true, φ=0, contours_equal_potential=true, linecolor=:White, legend=false, framestyle=:box, grid=true
+    ), φ=0, contours_equal_potential=true, linecolor=:White, legend=false, framestyle=:box, grid=true
 )
-
-
 # Aggiungi slice del detector
-plot!(sim.detector, full_det=true, st=:slice, lw=2, φ=0, xunit=u"m", yunit=u"m", zunit=u"m", xlabel="r ", ylabel="z ")
-
-
-
+plot!(sim.detector, st=:slice, lw=2, φ=0, xunit=u"m", yunit=u"m", zunit=u"m", xlabel="r ", ylabel="z ")
 plot!(framestyle=:box,
     grid=true,
     gridalpha=5,
@@ -136,16 +132,47 @@ plot!(framestyle=:box,
     tick_length=6,         # lunghezza del tick in pixel
     tick_direction=:in)
 
-x_ticks_cm = -0.04:0.02:0.04
-y_ticks_cm = -0.010:0.02:0.09
-x_labels = [@sprintf("%.2f", x) for x in x_ticks_cm]  # 1 decimale
-y_labels = [@sprintf("%.2f", y) for y in y_ticks_cm]  # 2 decimali se vuoi
+#x_ticks_cm = -0.04:0.02:0.04
+#y_ticks_cm = -0.010:0.02:0.09
+#x_labels = [@sprintf("%.2f", x) for x in x_ticks_cm]  # 1 decimale
+#y_labels = [@sprintf("%.2f", y) for y in y_ticks_cm]  # 2 decimali se vuoi
 
 
 # Applica ticks distanziati
-xticks!(p, x_ticks_cm, x_labels)
-yticks!(p, y_ticks_cm, y_labels)
-savefig(p, "science_fair/weight_pot.png")
+#xticks!(p, x_ticks_cm, x_labels)
+#yticks!(p, y_ticks_cm, y_labels)
+savefig(p, "CM_napoli/weight_pot1.png")
+
+p = plot(
+    WeightingPotential(
+        # multiply all entries in the electric potential that are NOT part of the semiconductor with NaN
+        sim.weighting_potentials[2].data .* replace(SolidStateDetectors.is_pn_junction_point_type.(
+                length(sim.weighting_potentials[2].grid.φ) == 1 ? sim.point_types.data : SolidStateDetectors.get_2π_potential(sim.point_types).data
+            ), 0 => T(NaN)),
+        sim.weighting_potentials[2].grid
+    ), φ=0, contours_equal_potential=true, linecolor=:White, legend=false, framestyle=:box, grid=true
+)
+# Aggiungi slice del detector
+plot!(sim.detector, st=:slice, lw=2, φ=0, xunit=u"m", yunit=u"m", zunit=u"m", xlabel="r ", ylabel="z ")
+plot!(framestyle=:box,
+    grid=true,
+    gridalpha=5,
+    size=(500, 500),
+    guidefontsize=12,
+    tickfont=font(8),
+    tick_length=6,         # lunghezza del tick in pixel
+    tick_direction=:in)
+
+#x_ticks_cm = -0.04:0.02:0.04
+#y_ticks_cm = -0.010:0.02:0.09
+#x_labels = [@sprintf("%.2f", x) for x in x_ticks_cm]  # 1 decimale
+#y_labels = [@sprintf("%.2f", y) for y in y_ticks_cm]  # 2 decimali se vuoi
+
+
+# Applica ticks distanziati
+#xticks!(p, x_ticks_cm, x_labels)
+#yticks!(p, y_ticks_cm, y_labels)
+savefig(p, "CM_napoli/weight_pot2.png")
 
 
 starting_positions = [CartesianPoint{T}(0.020, 0, 0.015),
