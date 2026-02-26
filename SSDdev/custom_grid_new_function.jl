@@ -14,21 +14,23 @@ using Printf
 gr()
 refinement_limits = Float32.([0.2, 0.1, 0.05, 0.02])
 save_sim_path = "saved_simulation/sim_ILM.h5"
-recalculate = true
+recalculate = false
+
+
+max_tick_distance_ep = 1u"mm"
 
 if isfile(save_sim_path) && !recalculate
     println("⚡ Upload simulation saved in : $save_sim_path")
     sim = ssd_read(save_sim_path, Simulation)
 else
     println("🔧 New simulation for the electric potential...")
-    max_tick_distance = 0.5u"mm"
     sim = Simulation(SSD_examples[:IVCIlayer])
     sim.detector = SolidStateDetector(sim.detector, contact_id=2, contact_potential=500u"V")
     calculate_electric_potential!(sim,
-        refinement_limits=refinement_limits,
+        refinement_limits=[0.2],
         verbose=true,
         depletion_handling=true,
-        #max_tick_distance=max_tick_distance
+        max_tick_distance=max_tick_distance_ep
     )
 
     println("💾 Saving simulation in $save_sim_path")
@@ -38,6 +40,7 @@ end
 α = 2.0
 fraction = [2.5, 2.0, 2.0]
 grid_ep = sim.electric_potential.grid
+
 println("Electric potential grid points: ",
     length(grid_ep.axes[1].ticks), " × ",
     length(grid_ep.axes[2].ticks), " × ",
@@ -45,15 +48,50 @@ println("Electric potential grid points: ",
 )
 
 
+# condition of initial density
+# dire che questi valori non sono stati presi a caso
+ρ_r_lim = 0.4  # ottenuto facendo il rapporto in mm (lunghrezza in mm / numero punti)
+ρ_z_lim = 0.4
+# porto in m
+ρ_r_lim = 0.0004 #m
+ρ_z_lim = 0.0004 #m
 
-println("=============== Applying initial state =======================")
-apply_initial_state!(sim, WeightingPotential, 1, grid_ep)
-SolidStateDetectors.update_till_convergence!(sim, WeightingPotential, 1, depletion_handling=true, verbose=true)
-println("Initial grid points: ",
-    length(sim.weighting_potentials[1].grid.axes[1].ticks), " × ",
-    length(sim.weighting_potentials[1].grid.axes[2].ticks), " × ",
-    length(sim.weighting_potentials[1].grid.axes[3].ticks)
-)
+world = sim.world
+world_Δs = SolidStateDetectors.width.(world.intervals)  #sono in metri
+world_Δr, world_Δϕ, world_Δz = world_Δs
+
+if world_Δr / length(grid_ep.axes[1].ticks) <= ρ_r_lim ||
+   world_Δz / length(grid_ep.axes[3].ticks) <= ρ_z_lim
+
+    @warn "Too dense grid!!!"
+    grid_in = Grid(sim, for_weighting_potential=true)
+    println("=============== Applying initial state =======================")
+    apply_initial_state!(sim, WeightingPotential, 1, grid_in)
+    SolidStateDetectors.update_till_convergence!(sim, WeightingPotential, 1, depletion_handling=true, verbose=true)
+    println("Initial grid points: ",
+        length(sim.weighting_potentials[1].grid.axes[1].ticks), " × ",
+        length(sim.weighting_potentials[1].grid.axes[2].ticks), " × ",
+        length(sim.weighting_potentials[1].grid.axes[3].ticks)
+    )
+    new_wp = sim.weighting_potentials[1][grid_ep]
+    println("Projected Ep on the user grid")
+    sim.weighting_potentials[1] = new_wp
+    SolidStateDetectors.update_till_convergence!(sim, WeightingPotential, 1, depletion_handling=true, verbose=true)
+    println("After projection: ",
+        length(sim.weighting_potentials[1].grid.axes[1].ticks), " × ",
+        length(sim.weighting_potentials[1].grid.axes[2].ticks), " × ",
+        length(sim.weighting_potentials[1].grid.axes[3].ticks)
+    )
+else
+    grid_in = grid_ep
+    apply_initial_state!(sim, WeightingPotential, 1, grid_in)
+    SolidStateDetectors.update_till_convergence!(sim, WeightingPotential, 1, depletion_handling=true, verbose=true)
+    println("Initial grid points: ",
+        length(sim.weighting_potentials[1].grid.axes[1].ticks), " × ",
+        length(sim.weighting_potentials[1].grid.axes[2].ticks), " × ",
+        length(sim.weighting_potentials[1].grid.axes[3].ticks)
+    )
+end
 
 
 
@@ -96,7 +134,7 @@ p = plot(sim.weighting_potentials[1],
     linecolor=:white,
     levels=5,
     title="ep initial grid ,
-    $(length(sim.weighting_potentials[1].grid.axes[1].ticks)) ×  $(length(sim.weighting_potentials[1].grid.axes[2].ticks)) × $(length(sim.weighting_potentials[1].grid.axes[3].ticks))",
+    $(length(grid_ep.axes[1].ticks))  × $(length(grid_ep.axes[2].ticks)) ×  $(length(grid_ep.axes[3].ticks))",
     size=(1200, 900))
 plot!(sim.detector, st=:slice, φ=90u"°", legend=false)
 plot!(x_rect, y_rect,
@@ -109,8 +147,7 @@ plot!(x_rect, y_rect,
 
 savefig(
     p,
-    "plot_custom_grid/electric_pot_grig$(length(sim.weighting_potentials[1].grid.axes[1].ticks)), × ,$(length(sim.weighting_potentials[1].grid.axes[2].ticks)), × , $(length(sim.weighting_potentials[1].grid.axes[3].ticks)).png"
+    "plot_custom_grid/corrected_grid/corrected_electric_pot_grig$(max_tick_distance_ep)_$(length(grid_ep.axes[1].ticks)) × $(length(grid_ep.axes[2].ticks)) × $(length(grid_ep.axes[3].ticks)).png"
 )
-
 
 println("ok")

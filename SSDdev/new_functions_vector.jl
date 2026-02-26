@@ -47,34 +47,18 @@ else
 end
 
 
-# plot del pot elettrico
-
-
-
-
-
 
 # ============================================================
 # SETUP GRID PER WEIGHTING POTENTIAL
 # ============================================================
-α = 2.0
-fraction = [2.5, 2.0, 2.0]
-P = prod(fraction)
 
-# ===============================================
-# Parametri di base
-# ===============================================
 max_tick_fin = [0.5u"mm", 0.1u"rad", 6u"mm"]   # r, φ, z#
-# oppure [0.01u"mm", 0.1u"rad", 0.01u"mm"]
 max_tick_min = 5u"mm"               # oppure [5u"mm", 0u"rad", 5u"mm"]
 α = 2.0
 fraction = [2.5, 2.0, 2.0]
 #fraction = [2.5, 2.0]   # fattori per il prodotto
 P = prod(fraction)
 
-# ===============================================
-# Costruzione initial_tick coerente con max_tick_fin
-# ===============================================
 if max_tick_fin isa AbstractArray
     # 3 element array 
     println("max_tick_fin is an array")
@@ -178,7 +162,7 @@ println("\n================== Starting refinement on the potential =============
 n_refinement_steps = length(refinement_limits)
 for iref in 1:n_refinement_steps
     println("\nRefinement step with limit = ", refinement_limits[iref])
-    max_diff_array = max_diff_array = (refinement_limits[iref], refinement_limits[iref], refinement_limits[iref])
+    max_diff_array =(refinement_limits[iref], refinement_limits[iref], refinement_limits[iref])
     SolidStateDetectors.refine!(sim, WeightingPotential, 1, max_diff_array)
     SolidStateDetectors.update_till_convergence!(sim, WeightingPotential, 1, depletion_handling=true, verbose=true)
 

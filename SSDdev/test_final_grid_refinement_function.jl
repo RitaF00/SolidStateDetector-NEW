@@ -17,18 +17,18 @@ refinement_limits = [0.2, 0.1, 0.05, 0.02]
 save_sim_path = "saved_simulation/sim_ILM.h5"
 
 
-recalculate = false   # <<<<<<<< CAMBIA QUI
+recalculate = true   # <<<<<<<< CAMBIA QUI
 if isfile(save_sim_path) && !recalculate
     println("⚡ Upoload simulation saved in : $save_sim_path")
     sim = ssd_read(save_sim_path, Simulation)
 
 else
     println("🔧 New simulation for the electric potential...")
-    max_tick_distance = 0.5u"mm"
+    max_tick_distance_ep = 0.08u"mm"
     #sim = Simulation(SSD_examples[:InvertedCoax])
     sim = Simulation(SSD_examples[:IVCIlayer])
     sim.detector = SolidStateDetector(sim.detector, contact_id=2, contact_potential=500u"V")
-    grid = Grid(sim, max_tick_distance=max_tick_distance)
+    grid = Grid(sim)
 
 
     calculate_electric_potential!(sim,
@@ -89,7 +89,7 @@ SolidStateDetectors._calculate_potential_max_tick_refinement!(sim,
     WeightingPotential,
     1,
     max_tick_distance=max_tick_distance,
-    #grid=sim.electric_potential.grid,
+    grid=sim.electric_potential.grid,
     depletion_handling=true,
     verbose=true,
     refinement_limits=refinement_limits)
@@ -163,7 +163,7 @@ p = plot(sim.weighting_potentials[1],
     contours_equal_potential=true,
     linecolor=:white,
     levels=5,
-    title="max tick = $max_tick_distance",
+    title="max tick Ep= $max_tick_distance_ep",
     size=(700, 400))
 plot!(sim.detector, st=:slice, φ=90u"°", legend=false)
 plot!(x_rect, y_rect,
@@ -180,4 +180,4 @@ savefig(p, joinpath(
     fname
 ))=#
 
-#savefig(p, "grid_from_Ep.png")
+#savefig(p, "testing_grid_from_Ep.png")

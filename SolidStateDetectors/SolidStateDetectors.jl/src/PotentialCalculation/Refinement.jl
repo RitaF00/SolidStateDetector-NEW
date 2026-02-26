@@ -247,10 +247,6 @@ function _refine_axis(ax::DiscreteAxis{T,<:Any,<:Any,ClosedInterval{T}}, ns::Vec
     typeof(ax)(ax.interval, ticks)
 end
 
-"""
-additional grid points are added bewteen distances larger than max_tick_distance.
-the new potential values are added via interpolations
-"""
 function _create_refined_grid_max_tick_array(p::ScalarPotential{T,3},
     max_tick::NTuple{3,T},
     minimum_distances::NTuple{3,T}) where {T}
