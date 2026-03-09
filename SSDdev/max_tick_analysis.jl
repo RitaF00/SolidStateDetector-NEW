@@ -122,7 +122,7 @@ savefig(p, "CM_napoli/weight_pot1_$max_tick_distance.png")
 
 max_tick_distance = 0.5u"mm"
 
-max_tick_array = [0.3u"mm"]
+max_tick_array = [0.5u"mm"]
 
 
 

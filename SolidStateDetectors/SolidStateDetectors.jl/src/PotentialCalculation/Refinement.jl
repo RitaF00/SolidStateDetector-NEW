@@ -45,7 +45,7 @@ end
 # 
 # 1. Extent the grid to be a closed grid in all dimensions. 
 # 2. Refine the axis of the grid based on `max_tick_input` and `minimum_applied_potential`:
-#    Insert N new ticks between to existing ticks such that the spatial difference between each tick becomes
+#    Insert N new ticks between two existing ticks such that the spatial difference between each tick becomes
 #    smaller than `max_tick_input[i]` (i -> dimension) but that the distances between the ticks stays larger than `minimum_distances[i]`.
 # 3. Create the new data array for the refined grid and fill it by interpolation of the the initial (coarse) grid.
 # """
@@ -61,7 +61,7 @@ function refine_scalar_potential_by_tick_distance(
     elseif length(max_tick_input) == 3
         Tuple(max_tick_input)
     else
-        error("max_tick must be a scalar or a collection of 3 Quantities")
+        error("max_tick_distance must be a scalar or a collection of 3 Quantities")
     end
 
     minimum_distances = if minimum_distances_input isa Quantity
@@ -69,7 +69,7 @@ function refine_scalar_potential_by_tick_distance(
     elseif length(minimum_distances_input) == 3
         Tuple(minimum_distances_input)
     else
-        error("max_tick must be a scalar or a collection of 3 Quantities")
+        error("minimum_distances must be a scalar or a collection of 3 Quantities")
     end
 
     max_tick_T = (T(ustrip(u"m", max_tick[1])),
@@ -132,7 +132,7 @@ function _get_closed_values(values::Array{T,3}, dim::Int, int::Interval{:closed,
         cat(values, values[1:1, :, :], dims=dim)
     elseif dim == 2
         cat(values, values[:, 1:1, :], dims=dim)
-    else # dim == 3
+    else
         cat(values, values[:, :, 1:1], dims=dim)
     end
 end
@@ -141,7 +141,7 @@ function _get_closed_values(values::Array{T,3}, dim::Int, int::Interval{:open,:c
         cat(values[end:end, :, :], values, dims=dim)
     elseif dim == 2
         cat(values[:, end:end, :], values, dims=dim)
-    else # dim == 3
+    else
         cat(values[:, :, end:end], values, dims=dim)
     end
 end
@@ -204,13 +204,11 @@ _get_ind_range_of_closed_axis(l::Int, ::Type{DiscreteAxis{T,BL,BR,Interval{:open
 
 function _create_refined_grid(p::ScalarPotential{T,3}, max_diffs::NTuple{3,T}, minimum_distances::NTuple{3,T}) where {T}
     max_diffs = broadcast(md -> iszero(md) ? Inf : md, max_diffs)
-    # calcola il numero di NUOVI punti da inserire tra i e i+1 lungo ogni asse
     n_1 = floor.(Int, [maximum(abs.(p.data[i+1, :, :] .- p.data[i, :, :])) for i in 1:size(p.data, 1)-1] ./ max_diffs[1])
     n_2 = floor.(Int, [maximum(abs.(p.data[:, i+1, :] .- p.data[:, i, :])) for i in 1:size(p.data, 2)-1] ./ max_diffs[2])
     n_3 = floor.(Int, [maximum(abs.(p.data[:, :, i+1] .- p.data[:, :, i])) for i in 1:size(p.data, 3)-1] ./ max_diffs[3])
     ns = (n_1, n_2, n_3)
     widths = diff.((p.grid.axes[1].ticks, p.grid.axes[2].ticks, p.grid.axes[3].ticks))
-    # ccalcolo la larghezza delle nuove celle
     sub_widths = broadcast(ia -> [widths[ia][i] / (ns[ia][i] + 1) for i in eachindex(ns[ia])], (1, 2, 3))
     for ia in 1:3
         for i in eachindex(ns[ia])
@@ -220,7 +218,7 @@ function _create_refined_grid(p::ScalarPotential{T,3}, max_diffs::NTuple{3,T}, m
             end
         end
     end
-    for i in 1:3 # always add an even number of ticks
+    for i in 1:3
         if isodd(sum(ns[i]))
             i_max_width = findmax(sub_widths[i])[2]
             ns[i][i_max_width] += 1
@@ -232,7 +230,7 @@ function _create_refined_grid(p::ScalarPotential{T,3}, max_diffs::NTuple{3,T}, m
 end
 
 function _refine_axis(ax::DiscreteAxis{T,<:Any,<:Any,ClosedInterval{T}}, ns::Vector{Int}, sub_widths::Vector{T}) where {T}
-    @assert length(ns) == length(ax.ticks) - 1 # for ClosedInterval axis
+    @assert length(ns) == length(ax.ticks) - 1
     ticks = Vector{T}(undef, length(ax.ticks) + sum(ns))
     i = 1
     for j in eachindex(ns)
@@ -255,7 +253,6 @@ function _create_refined_grid_max_tick_array(p::ScalarPotential{T,3},
     widths = [diff(p.grid.axes[1].ticks),
         diff(p.grid.axes[2].ticks),
         diff(p.grid.axes[3].ticks)]
-
     n_1 = [floor(Int, (p.grid.axes[1].ticks[i+1] - p.grid.axes[1].ticks[i]) / max_tick[1])
            for i in 1:length(p.grid.axes[1].ticks)-1]
     n_2 = [floor(Int, (p.grid.axes[2].ticks[i+1] - p.grid.axes[2].ticks[i]) / max_tick[2])
@@ -263,11 +260,7 @@ function _create_refined_grid_max_tick_array(p::ScalarPotential{T,3},
     n_3 = [floor(Int, (p.grid.axes[3].ticks[i+1] - p.grid.axes[3].ticks[i]) / max_tick[3])
            for i in 1:length(p.grid.axes[3].ticks)-1]
     ns = (n_1, n_2, n_3)
-
-
     sub_widths = [[widths[ia][i] / (ns[ia][i] + 1) for i in eachindex(ns[ia])] for ia in 1:3]
-
-    # safe minimum distance
     for ia in 1:3
         for i in eachindex(ns[ia])
             while sub_widths[ia][i] < minimum_distances[ia] && ns[ia][i] > 0
@@ -285,7 +278,6 @@ function _create_refined_grid_max_tick_array(p::ScalarPotential{T,3},
         end
     end
     new_axes = broadcast(i -> _refine_axis(p.grid.axes[i], ns[i], sub_widths[i]), (1, 2, 3))
-
     return typeof(p.grid)(new_axes)
 end
 

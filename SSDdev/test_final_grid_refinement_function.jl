@@ -12,23 +12,23 @@ using HDF5
 gr()
 
 refinement_limits = [0.2, 0.1, 0.05, 0.02]
-
+#0.9987285
 
 save_sim_path = "saved_simulation/sim_ILM.h5"
+max_tick_distance_ep = 1u"mm"
 
-
-recalculate = true   # <<<<<<<< CAMBIA QUI
+recalculate = false   # <<<<<<<< CAMBIA QUI
 if isfile(save_sim_path) && !recalculate
     println("⚡ Upoload simulation saved in : $save_sim_path")
     sim = ssd_read(save_sim_path, Simulation)
 
 else
     println("🔧 New simulation for the electric potential...")
-    max_tick_distance_ep = 0.08u"mm"
+    max_tick_distance_ep = 1u"mm"
     #sim = Simulation(SSD_examples[:InvertedCoax])
     sim = Simulation(SSD_examples[:IVCIlayer])
     sim.detector = SolidStateDetector(sim.detector, contact_id=2, contact_potential=500u"V")
-    grid = Grid(sim)
+    grid = Grid(sim, max_tick_distance=max_tick_distance_ep)
 
 
     calculate_electric_potential!(sim,
@@ -78,18 +78,19 @@ println("======== Weighting Potential calculation =======")
 
 #max_tick_distance = (4u"mm", 1u"rad", 0.6u"mm")
 
-max_tick_distance = 1u"mm"
+max_tick_distance = (0.5u"mm", 1u"rad", 1u"mm")
+max_tick_distance = 0.1u"mm"
 
-ref_grid = [2.5]
+
 # inizio del time
 t0 = time_ns()
-
+# 0.99518037
 # passo la griglia del pot_elettrico
-SolidStateDetectors._calculate_potential_max_tick_refinement!(sim,
+SolidStateDetectors._calculate_potential!(sim,
     WeightingPotential,
     1,
+    #grid=sim.electric_potential.grid,
     max_tick_distance=max_tick_distance,
-    grid=sim.electric_potential.grid,
     depletion_handling=true,
     verbose=true,
     refinement_limits=refinement_limits)
@@ -163,7 +164,7 @@ p = plot(sim.weighting_potentials[1],
     contours_equal_potential=true,
     linecolor=:white,
     levels=5,
-    title="max tick Ep= $max_tick_distance_ep",
+    title="max tick in Wp = $max_tick_distance",
     size=(700, 400))
 plot!(sim.detector, st=:slice, φ=90u"°", legend=false)
 plot!(x_rect, y_rect,
