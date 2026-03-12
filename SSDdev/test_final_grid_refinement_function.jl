@@ -79,7 +79,7 @@ println("======== Weighting Potential calculation =======")
 #max_tick_distance = (4u"mm", 1u"rad", 0.6u"mm")
 
 max_tick_distance = (0.5u"mm", 1u"rad", 1u"mm")
-max_tick_distance = 0.1u"mm"
+max_tick_distance = 0.035u"mm"
 
 
 # inizio del time

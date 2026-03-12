@@ -1755,7 +1755,7 @@ end
 
 
 
-
+#=
 
 function _calculate_potential_max_tick_refinement!(sim::Simulation{T,CS}, potential_type::UnionAll, contact_id::Union{Missing,Int}=missing;
     convergence_limit::Real=1e-7,
@@ -2392,7 +2392,7 @@ _needs_refinement(::Type{Cartesian}, max_tick_distance, Δx, Δy, Δz) = (
 )
 
 
-
+=#
 
 
 """
