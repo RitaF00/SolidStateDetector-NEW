@@ -2,6 +2,12 @@ using Random
 using Plots
 using ProgressMeter
 using Distributions
+using JSON
+
+
+
+
+
 
 # -----------------------------
 # Parametri fisici e griglia
@@ -102,7 +108,9 @@ function multiple_charges_trapping_3D_linear(x_charges, N::Int=100, Li_grid=noth
                 trapped = true
                 break
             end
-
+            if x_charge == 0
+                break
+            end
 
             if x_charge >= FCCD_cm
                 collected_count += 1
@@ -162,10 +170,11 @@ display(p)
 # -----------------------------
 # Simulazione CCE
 # -----------------------------
-step = 0.01
+step = 0.002
 x_pos = 0:step:0.15
-N_charges = 100
-N_repeat = 5
+N_charges = 1000
+N_repeat = 10
+
 
 N_matrix = zeros(Int, length(x_pos), N_repeat)
 p_bar = Progress(length(x_pos) * N_repeat, desc="Simulazione CCE")
@@ -205,3 +214,20 @@ plot!(
 vline!(plt, [0.05], ls=:dash, color=:black, label="Li layer")
 savefig(plt, "plot/CCE_linear Li_size = $r_Li N$N_charges dx=$step mm.png")
 display(plt)
+
+
+#----dizionario---
+results = Dict(
+    "x_pos" => collect(x_pos),        # range → array
+    "CCE_mean" => CCE_mean,
+    "CCE_std" => CCE_std
+)
+
+# -----------------------------
+# Salvataggio su file JSON
+# -----------------------------
+open("Radford_CCE.json", "w") do f
+    JSON.print(f, results, 4)  # 4 = indentazione bella leggibile
+end
+
+println("File JSON salvato: Radford_CCE.json")
