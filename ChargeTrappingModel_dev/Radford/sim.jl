@@ -111,7 +111,6 @@ function multiple_charges_trapping_3D_linear(x_charges, N::Int=100, Li_grid=noth
             if x_charge == 0
                 break
             end
-
             if x_charge >= FCCD_cm
                 collected_count += 1
                 break
@@ -171,7 +170,7 @@ display(p)
 # Simulazione CCE
 # -----------------------------
 step = 0.002
-x_pos = 0:step:0.15
+x_pos = 0:step:0.11
 N_charges = 1000
 N_repeat = 10
 

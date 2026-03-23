@@ -27,14 +27,14 @@ else
     println("🔧 New simulation for the electric potential...")
     sim_sf = Simulation{T}(SSD_examples[:InvertedCoax])
     sim_sf.detector = SolidStateDetector(sim_sf.detector, contact_id=2, contact_potential=3500u"V")
-    grid = Grid(sim_sf, max_tick_distance=5u"mm")
+    grid = Grid(sim_sf, max_tick_distance=0.1u"mm")
     println("🔧 New simulation for the electric potential...")
     calculate_electric_potential!(sim_sf, grid=grid)
     println("🔧 New simulation for the electric field...")
     calculate_electric_field!(sim_sf)
     println("🔧 New simulation for the weighting potential...")
-    calculate_weighting_potential!(sim_sf, 1, refinement_limits=[0.2, 0.1]; grid=sim_sf.electric_potential.grid)
-    calculate_weighting_potential!(sim_sf, 2, refinement_limits=[0.2, 0.1]; grid=sim_sf.electric_potential.grid)
+    #calculate_weighting_potential!(sim_sf, 1, refinement_limits=[0.2, 0.1]; grid=sim_sf.electric_potential.grid)
+    #calculate_weighting_potential!(sim_sf, 2, refinement_limits=[0.2, 0.1]; grid=sim_sf.electric_potential.grid)
 
     println("💾 Saving simulation in $save_sim_path")
     ssd_write(save_sim_path, sim_sf)
@@ -68,15 +68,15 @@ p = plot(
 
 
 # Aggiungi slice del detector
-plot!(sim.detector, full_det=true, st=:slice, lw=2, φ=0)
+plot!(sim.detector, full_det=true, st=:slice, lw=0.5, φ=0)
 
 
 
-plot!(framestyle=:box,
-    grid=true,
-    gridalpha=5,
-    size=(500, 500),
+plot!(
+    size=(2000, 1200),
     guidefontsize=12,
+    title="",
+    label="",
     tickfont=font(8),
     tick_length=6,         # lunghezza del tick in pixel
     tick_direction=:in)
@@ -95,13 +95,12 @@ savefig(p, "science_fair/electric_pot.png")
 
 p =
     plot(sim.electric_field, full_det=true, size=(500, 500), clims=(0, 5e5), legend=false)
-plot_electric_fieldlines!(sim, full_det=true, sampling=3u"mm", offset=2u"mm")
+plot_electric_fieldlines!(sim, full_det=true, sampling=1u"mm", offset=2u"mm")
 
 # Aggiungi slice del detector
-plot!(sim.detector, full_det=true, st=:slice, lw=2, φ=0)
+plot!(sim.detector, full_det=true, st=:slice, color=:viridis, lw=0.5, φ=0)
 plot!(framestyle=:box,
     grid=true,
-    gridalpha=5,
     size=(500, 500),
     guidefontsize=12,
     tickfont=font(8),
@@ -111,7 +110,7 @@ plot!(framestyle=:box,
 savefig(p, "science_fair/electric_field.png")
 
 
-
+#=
 p = plot(
     WeightingPotential(
         # multiply all entries in the electric potential that are NOT part of the semiconductor with NaN
@@ -196,3 +195,4 @@ simulate!(evt, sim, Δt=5u"ns")
 p = plot(u"ns", u"fC", framestyle=:box,)
 plot!(evt.waveforms, linewidth=4, legend=false)
 savefig(p, "science_fair/charge_dcollection.png")
+=#

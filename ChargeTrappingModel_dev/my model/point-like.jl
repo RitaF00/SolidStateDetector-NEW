@@ -3,6 +3,7 @@ using Plots
 using SpecialFunctions
 using ProgressMeter
 using Distributions
+using JSON
 
 # -----------------------------
 # Parametri fisici
@@ -11,8 +12,8 @@ Lx = 0.2
 Ly = 0.2
 Lz = 0.2
 
-dx = 0.00001  #   10 um
-α = 1.65e-11
+dx = 0.001   # slice per diffusione Li (1 µm)
+α = 1.6 * 1e-11     # thinning factor
 
 FCCD_cm = 0.1
 
@@ -49,7 +50,7 @@ r_Li = 0.002  # 20 µm
 # -----------------------------
 function generate_Li_cells(Lx, Ly, Lz, dx, α)
 
-    cell_size = r_Li
+    cell_size = 0.0020 # creo una griglia 
 
     nx = Int(Lx / cell_size)
     ny = Int(Ly / cell_size)
@@ -205,10 +206,10 @@ display(p)
 # -----------------------------
 # Simulazione CCE
 # -----------------------------
-x_pos = 0:0.01:0.15
+x_pos = 0:0.002:0.11
 
-N_charges = 10
-N_repeat = 1
+N_charges = 500
+N_repeat = 25
 
 N_matrix = zeros(Int, length(x_pos), N_repeat)
 
@@ -252,3 +253,30 @@ vline!(plt, [FCCD_cm], linestyle=:dash, label="FCCD")
 
 savefig(plt, "CCE.png")
 display(plt)
+
+
+
+filename = "My-uncomplete-model.json"
+
+results = Dict(
+    "x_pos" => collect(x_pos),        # range → array
+    "CCE_mean" => CCE_mean,
+    "CCE_std" => CCE_std
+)
+
+if isfile(filename)
+    println("Il file $filename esiste già. Vuoi sovrascriverlo? (y/n)")
+    risposta = readline()
+
+    if lowercase(risposta) != "y"
+        println("Operazione annullata, file non modificato.")
+        return
+    end
+end
+
+# Salvataggio
+open(filename, "w") do f
+    JSON.print(f, results, 4)
+end
+
+println("File JSON salvato: $filename")
