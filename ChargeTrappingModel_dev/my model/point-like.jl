@@ -8,11 +8,11 @@ using JSON
 # -----------------------------
 # Parametri fisici
 # -----------------------------
-Lx = 0.2
+Lx = 0.2  #mm
 Ly = 0.2
 Lz = 0.2
 
-dx = 0.001   # slice per diffusione Li (1 µm)
+dx = 0.001   # slice per diffusione Li in mm (1 µm)
 α = 1.6 * 1e-11     # thinning factor
 
 FCCD_cm = 0.1
@@ -36,7 +36,7 @@ D_Li = D0 * exp(-H / (R * T_ann))
 D = 28.9
 Δt = 1.0
 t_max = 10000
-Nt = Int(t_max / Δt)
+
 
 σ = sqrt(2 * D * Δt) * 1e-4  # cm
 
@@ -48,6 +48,10 @@ r_Li = 0.002  # 20 µm
 # -----------------------------
 # Generazione celle con Li puntiformi
 # -----------------------------
+"""
+creo comunque una griglia per poter velocizzare il coedice e controlalree se la carica cade in un Li soltanto in celle adiacenti,
+ma ogni  cella ha un nummro di Li diverso, e non fissato ad 1.
+"""
 function generate_Li_cells(Lx, Ly, Lz, dx, α)
 
     cell_size = 0.0020 # creo una griglia 
@@ -62,8 +66,6 @@ function generate_Li_cells(Lx, Ly, Lz, dx, α)
     total_Li = 0
 
     for xi in x_slices
-
-
 
         Nd_val = Ns * erfc(xi / (2 * sqrt(D_Li * t_ann)))
         dV = dx * Ly * Lz

@@ -1,9 +1,14 @@
+
 using Random
 using Plots
+using SpecialFunctions
 using ProgressMeter
 using Distributions
 using JSON
-
+using Unitful
+using SolidStateDetectors
+using SolidStateDetectors: Electron, Hole
+T = Float64
 
 
 
@@ -28,6 +33,22 @@ t_max = 10000      # ns
 Nt = Int(t_max / Δt)
 σ = sqrt(2 * D * Δt) * 1e-4  # cm (conversione μm -> cm)
 
+max_concentration = 0.015   # 1.5 % per averte 1200 precipitati
+
+# -----------------------------
+# Annealing Li
+# -----------------------------
+t_ann = 18 * 60
+T_ann = 623
+
+R = 1.98
+H = 11800
+D0 = 2.5e-3
+
+Ns = 10^(21.27 - 2610 / T_ann)
+D_Li = D0 * exp(-H / (R * T_ann))
+
+
 # -----------------------------
 # Funzione generazione Li 3D
 # -----------------------------
@@ -36,13 +57,14 @@ function generate_Li_grid_precipitates(Lx_mm, Ly_mm, Lz_mm, precipitate_size_um)
     # Parametri voxel e volume
     # -----------------------------
     voxel = precipitate_size_um         # lato del voxel = dimensione del precipitato (μm)
-    nx = Int(Lx_mm * 1000 / voxel)     # numero voxel lungo x
+    nx = Int(Lx_mm * 1000 / voxel)     # numero voxel lungo x in μm
     ny = Int(Ly_mm * 1000 / voxel)     # numero voxel lungo y
     nz = Int(Lz_mm * 1000 / voxel)     # numero voxel lungo z
 
     # profondità del Li layer e concentrazione massima
-    li_depth_um = 500.0                # 1 mm
-    max_concentration = 0.005           # 0.5 %
+    li_depth_um = 500.0                # 0.5 mm
+    #max_concentration = 0.005           # 0.5 %
+
 
     # -----------------------------
     # Inizializzazione griglia
@@ -53,8 +75,8 @@ function generate_Li_grid_precipitates(Lx_mm, Ly_mm, Lz_mm, precipitate_size_um)
     # Popolamento griglia
     # -----------------------------
     for x in 1:nx
-        depth = (x - 1) * voxel
-        conc = depth < li_depth_um ? max_concentration : 0.0
+        depth = (x - 1) * voxel                                       # depth in μm --> cm
+        conc = depth < li_depth_um ? max_concentration * erfc(depth / 10000 / (2 * sqrt(D_Li * t_ann))) : 0.0
 
         for y in 1:ny, z in 1:nz
             # 1 Li per voxel massimo
@@ -128,6 +150,9 @@ end
 Li_grid, nx, ny, nz, voxel = generate_Li_grid_precipitates(Lx * 10, Ly * 10, Lz * 10, r_Li * 1e4)
 println("Griglia Li 3D generata!")
 
+N_Li = count(Li_grid)
+println("Numero totale di precipitati Li = ", N_Li)
+
 # -----------------------------
 # Estrazione coordinate per plot 3D
 # -----------------------------
@@ -145,7 +170,8 @@ p = scatter3d(xs, ys, zs, markersize=2, markercolor=:grey,
     xlabel="x (cm)", ylabel="y (cm)", zlabel="z (cm)",
     xlim=(0, Lx), ylim=(0, Ly), zlim=(0, Lz), grid=true,
     legend=false,
-    camera=(25, 34), size=(800, 800))
+    camera=(25, 34), size=(800, 800),
+    title="Number Li = $N_Li")
 
 # Vertici del cubo
 xv = [0, Lx]
@@ -162,7 +188,7 @@ end
 for y in yv, z in zv
     plot!(p, [0, Lx], [y, y], [z, z], linecolor=:black)  # spigoli sinistra/destra
 end
-savefig(p, "plot/3D_linear_precip_dist.png")
+savefig(p, "plot/giov_$(max_concentration*100)%_erf.png")
 display(p)
 
 
@@ -171,8 +197,8 @@ display(p)
 # -----------------------------
 step = 0.002
 x_pos = 0:step:0.11
-N_charges = 1000
-N_repeat = 10
+N_charges = 500
+N_repeat = 25
 
 
 N_matrix = zeros(Int, length(x_pos), N_repeat)
@@ -211,7 +237,7 @@ plot!(
 )
 
 vline!(plt, [0.05], ls=:dash, color=:black, label="Li layer")
-savefig(plt, "plot/CCE_linear Li_size = $r_Li N$N_charges dx=$step mm.png")
+savefig(plt, "plot/CCE_Giov_erf_$(max_concentration*100)%.png")
 display(plt)
 
 
@@ -225,8 +251,8 @@ results = Dict(
 # -----------------------------
 # Salvataggio su file JSON
 # -----------------------------
-open("Radford_CCE.json", "w") do f
+open("erf-$(max_concentration*100)%.json", "w") do f
     JSON.print(f, results, 4)  # 4 = indentazione bella leggibile
 end
 
-println("File JSON salvato: Radford_CCE.json")
+println("File JSON salvato: erf-$(max_concentration*100)%.json")

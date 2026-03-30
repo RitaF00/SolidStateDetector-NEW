@@ -12,7 +12,7 @@ Lx = 0.2      # cm
 Ly = 0.2
 Lz = 0.2
 
-dx = 0.001   # slice per diffusione Li (1 µm)
+dx = 0.0010   # slice per diffusione Li (1 µm)
 α = 2 * 1e-11     # thinning factor
 
 FCCD_cm = 0.1
