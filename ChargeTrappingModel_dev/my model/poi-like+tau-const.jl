@@ -4,16 +4,18 @@ using SpecialFunctions
 using ProgressMeter
 using Distributions
 using JSON
+using Statistics
+using LaTeXStrings
 
 # -----------------------------
-# Parametri fisici
+# Parametri geometrici (cm)
 # -----------------------------
-Lx = 0.2  #mm
+Lx = 0.2
 Ly = 0.2
 Lz = 0.2
 
-dx = 0.001   # slice per diffusione Li in mm (1 µm)
-α = 1.6 * 1e-11     # thinning factor
+dx = 0.001
+α = 1.6e-11   # valore di default
 
 FCCD_cm = 0.1
 
@@ -33,25 +35,28 @@ D_Li = D0 * exp(-H / (R * T_ann))
 # -----------------------------
 # Diffusione carica
 # -----------------------------
-D = 28.9 # μm^2/ns
-Δt = 1.0  #ns
-t_max = 10000
+D = 28.9
 
-Nt = Int(t_max / Δt)
-σ = sqrt(6 * D * Δt) * 1e-4  # cm
+Δt = 1.0  # ns (tempo step)
+Nt = 10000
 
-# -----------------------------
-# Raggio precipitati
-# -----------------------------
-r_Li = 0.002  # 20 µm
+T_diff = 90 # K
+
+σ = sqrt(2 * D * Δt) * 1e-4  # cm
 
 # -----------------------------
-# Generazione celle con Li puntiformi
+# Precipitati (solo per σ_trap)
 # -----------------------------
-"""
-creo comunque una griglia per poter velocizzare il coedice e controlalree se la carica cade in un Li soltanto in celle adiacenti,
-ma ogni  cella ha un nummro di Li diverso, e non fissato ad 1.
-"""
+r_Li = 0.002  # cm
+
+# -----------------------------
+# Probabilità di trapping
+# -----------------------------
+function P_trapping(Δt)
+    τ_ns = 800 #ns
+    return 1 .- exp.(-Δt ./ τ_ns)
+end
+
 function generate_Li_cells(Lx, Ly, Lz, dx, α)
 
     cell_size = 0.0020 # creo una griglia di 20 μm in mm
@@ -139,7 +144,10 @@ function multiple_charges_trapping_3D(x_charges, N, cells, cell_size)
                     for (px, py, pz) in cells[jx, jy, jz]
 
                         if (x - px)^2 + (y - py)^2 + (z - pz)^2 < r_Li^2
-                            trapped = true
+                            if rand() < P_trapping(Δt)
+                                trapped = true
+                                break
+                            end
                             break
                         end
                     end
@@ -168,42 +176,10 @@ function multiple_charges_trapping_3D(x_charges, N, cells, cell_size)
     return collected_count
 end
 
-# -----------------------------
-# Generazione Li
-# -----------------------------
+
 cells, nx, ny, nz, cell_size = generate_Li_cells(Lx, Ly, Lz, dx, α)
 n_precipitates = sum(length(cells[ix, iy, iz]) for ix in 1:nx, iy in 1:ny, iz in 1:nz)
 println("Numero precipitati Li = ", n_precipitates)
-
-# -----------------------------
-# Plot distribuzione Li
-# -----------------------------
-xs, ys, zs = Float64[], Float64[], Float64[]
-
-for ix in 1:nx, iy in 1:ny, iz in 1:nz
-    for (x, y, z) in cells[ix, iy, iz]
-        push!(xs, x)
-        push!(ys, y)
-        push!(zs, z)
-    end
-end
-
-p = scatter3d(xs, ys, zs,
-    markersize=1,
-    markercolor=:grey,
-    xlabel="x (cm)",
-    ylabel="y (cm)",
-    zlabel="z (cm)",
-    label="Li precipitates",
-    xlim=(0, Lx),
-    ylim=(0, Ly),
-    zlim=(0, Lz),
-    camera=(25, 30),
-    size=(800, 800)
-)
-
-savefig(p, "3D_Li.png")
-display(p)
 
 # -----------------------------
 # Simulazione CCE
@@ -233,40 +209,38 @@ CCE_std = vec(std(CCE, dims=2))
 # -----------------------------
 # Plot CCE
 # -----------------------------
-plt = plot(x_pos, CCE_mean,
+plt = plot(x_pos .* 10, CCE_mean,
     lw=2,
     color=:orange,
-    xlabel="depth (cm)",
+    xlabel="depth (mm)",
     ylabel="CCE",
     label="20 μm precipitates",
-    size=(800, 600),
+    size=(450, 600),
     frame=:box
 )
 
 plot!(
-    x_pos, CCE_mean,
-    yerr=CCE_std,
-    seriestype=:scatter,
+    x_pos .* 10, CCE_mean,
+    color=:orange,
+    ribbon=CCE_std,
+    fillalpha=0.32,
     ms=2,
     label=false
 )
 
-vline!(plt, [FCCD_cm], linestyle=:dash, label="FCCD")
+vline!(plt, [FCCD_cm .* 10], linestyle=:dash, label="FCCD")
 
-savefig(plt, "CCE.png")
+#savefig(plt, "CCE.png")
 display(plt)
 
 
-
-filename = "My-uncomplete-model-3D.json"
+filename = "json-CCE-file/Point-Li-and-const-tau-800ns.json"
 
 results = Dict(
     "x_pos" => collect(x_pos),        # range → array
     "CCE_mean" => CCE_mean,
     "CCE_std" => CCE_std
 )
-
-
 
 if isfile(filename)
     println("Il file $filename esiste già. Vuoi sovrascriverlo? (y/n)")

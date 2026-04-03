@@ -26,7 +26,7 @@ D = 28.9           # μm^2/ns 2.89e-7 cm^2 ns^-1
 Δt = 1.0           # ns
 t_max = 10000      # ns
 Nt = Int(t_max / Δt)
-σ = sqrt(2 * D * Δt) * 1e-4  # cm (conversione μm -> cm)
+σ = sqrt(6 * D * Δt) * 1e-4  # cm (conversione μm -> cm)  in σ c'è il fattore 6 perché stiamo considerando la diffusione in 3D
 
 # -----------------------------
 # Funzione generazione Li 3D
@@ -171,8 +171,8 @@ display(p)
 # -----------------------------
 step = 0.002
 x_pos = 0:step:0.11
-N_charges = 1000
-N_repeat = 10
+N_charges = 500
+N_repeat = 25
 
 
 N_matrix = zeros(Int, length(x_pos), N_repeat)

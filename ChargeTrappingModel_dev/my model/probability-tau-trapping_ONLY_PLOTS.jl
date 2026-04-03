@@ -26,7 +26,7 @@ D_Li = D0 * exp(-H / (R * T_ann))
 
 function τ_hole(x, α)
     m0 = 9.11e-31 #kg
-    m_eff_hole = 0.3 * m0
+    m_eff_hole = 0.21 * m0
     kB = 1.38e-23 #J/K
     v_th = [(3 * kB * T_diff / m_eff_hole)^0.5] .* 1e-2  # cm/s
     σ_trap = π * (r_Li)^2

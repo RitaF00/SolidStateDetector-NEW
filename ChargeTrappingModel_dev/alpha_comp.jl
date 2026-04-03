@@ -14,6 +14,7 @@ Lz = 0.2
 
 dx = 0.0010   # slice per diffusione Li (1 µm)
 FCCD_cm = 0.1
+x_RDR = 0.065 # cm
 
 # -----------------------------
 # Annealing Li
@@ -36,7 +37,7 @@ D = 28.9
 t_max = 10000
 Nt = Int(t_max / Δt)
 
-σ = sqrt(2 * D * Δt) * 1e-4  # cm
+σ = sqrt(6 * D * Δt) * 1e-4  # cm
 
 # -----------------------------
 # Raggio precipitati
@@ -47,34 +48,42 @@ r_Li = 0.002  # 20 µm
 # Funzioni principali (come nel tuo codice)
 # -----------------------------
 function generate_Li_cells(Lx, Ly, Lz, dx, α)
-    cell_size = r_Li
+    # Griglia per celle di Li
+    cell_size = 0.002 # 20 μm
     nx = Int(Lx / cell_size)
     ny = Int(Ly / cell_size)
     nz = Int(Lz / cell_size)
+
     cells = [Vector{NTuple{3,Float64}}() for _ in 1:nx, _ in 1:ny, _ in 1:nz]
 
     x_slices = 0:dx:Lx
     total_Li = 0
 
     for xi in x_slices
-        Nd_val = Ns * erfc(xi / (2 * sqrt(D_Li * t_ann)))
-        dV = dx * Ly * Lz
-        λ = α * Nd_val * dV
-        N_i = rand(Poisson(λ))
-        total_Li += N_i
+        # Genera Li solo se xi < x_RDR
+        if xi < x_RDR
+            Nd_val = Ns * erfc(xi / (2 * sqrt(D_Li * t_ann)))
+            dV = dx * Ly * Lz
+            λ = α * Nd_val * dV
+            N_i = rand(Poisson(λ))
 
-        for _ in 1:N_i
-            x_pos = xi + rand() * dx
-            y_pos = rand() * Ly
-            z_pos = rand() * Lz
-            ix = clamp(Int(floor(x_pos / cell_size)) + 1, 1, nx)
-            iy = clamp(Int(floor(y_pos / cell_size)) + 1, 1, ny)
-            iz = clamp(Int(floor(z_pos / cell_size)) + 1, 1, nz)
-            push!(cells[ix, iy, iz], (x_pos, y_pos, z_pos))
+            total_Li += N_i
+
+            for _ in 1:N_i
+                x_pos = xi + rand() * dx
+                y_pos = rand() * Ly
+                z_pos = rand() * Lz
+
+                ix = clamp(Int(floor(x_pos / cell_size)) + 1, 1, nx)
+                iy = clamp(Int(floor(y_pos / cell_size)) + 1, 1, ny)
+                iz = clamp(Int(floor(z_pos / cell_size)) + 1, 1, nz)
+
+                push!(cells[ix, iy, iz], (x_pos, y_pos, z_pos))
+            end
         end
     end
 
-    println("α = $α: Numero totale di atomi Li generati = ", total_Li)
+    println("Numero totale di atomi Li generati = ", total_Li)
     return cells, nx, ny, nz, cell_size
 end
 
@@ -138,14 +147,14 @@ end
 # -----------------------------
 # Array di α da testare
 # -----------------------------
-alphas = [1e-8, 1e-9, 1e-10, 1e-11, 1e-12]
+alphas = [1e-8, 1e-9, 1e-10, 1.6e-11, 1e-12]
 colors = [:deepskyblue, :royalblue1, :mediumpurple2, :deeppink, :orange]
 
 # -----------------------------
 # Profondità e parametri simulazione
 # -----------------------------
 x_pos = 0:0.002:0.12
-N_charges = 100
+N_charges = 500
 N_repeat = 25
 
 CCE_mean_list = []
@@ -176,15 +185,15 @@ end
 # -----------------------------
 # Plot CCE vs α
 # -----------------------------
-plt = plot(xlabel="depth (cm)", ylabel="CCE", frame=:box, size=(800, 600))
+plt = plot(xlabel="depth (cm)", ylabel="CCE", frame=:box, size=(500, 600))
 for i in 1:length(alphas)
     plot!(plt, x_pos, CCE_mean_list[i], lw=2.5, color=colors[i], label="α=$(alphas[i])")
     plot!(x_pos, CCE_mean_list[i],
-        yerr=CCE_std_list[i],
-        seriestype=:scatter,
-        color=:black,
-        marker=:circle,
-        ms=1.5,
+        ribbon=CCE_std_list[i],
+        lw=2,
+        #seriestype=:scatter,
+        color=colors[i],
+        alpha=0.1,
         label=false)
 end
 
