@@ -1,10 +1,12 @@
 using Pkg
 Pkg.activate(".")  # Assicurati di essere in ~/Phd/ChargeTrappingModel_dev/SSD_code
-push!(LOAD_PATH, joinpath(pwd(), "SolidStateDetectors_local_version", "src"))
+Pkg.develop(path="SolidStateDetectors_local_version")
 using Plots
 using Unitful
 using SolidStateDetectors
 T = Float64;
+
+println(pathof(SolidStateDetectors))
 
 # the geometry parameters of the model for following displaydet_rin = 1u"mm"
 det_z = det_r = 10u"mm"

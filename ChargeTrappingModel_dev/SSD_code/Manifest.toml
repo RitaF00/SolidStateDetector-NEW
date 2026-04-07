@@ -733,9 +733,7 @@ version = "1.11.0"
 
 [[deps.SolidStateDetectors]]
 deps = ["Adapt", "ArraysOfArrays", "Clustering", "DataStructures", "Distributions", "FillArrays", "Format", "GPUArrays", "Interpolations", "IntervalSets", "InverseFunctions", "JSON", "KernelAbstractions", "LaTeXStrings", "LightXML", "LinearAlgebra", "OrderedCollections", "ParallelProcessingTools", "Parameters", "PolygonOps", "Polynomials", "ProgressMeter", "RadiationDetectorSignals", "Random", "RecipesBase", "Requires", "Rotations", "SpecialFunctions", "StaticArrays", "Statistics", "StatsBase", "Suppressor", "Tables", "TypedTables", "Unitful", "UnitfulAtomic", "YAML"]
-git-tree-sha1 = "ca737e3d75e2816252c7fd39ff1608618a8be00f"
-repo-rev = "main"
-repo-url = "https://github.com/JuliaPhysics/SolidStateDetectors.jl"
+path = "SolidStateDetectors_local_version"
 uuid = "71e43887-2bd9-5f77-aebd-47f656f0a3f0"
 version = "0.11.0"
 
