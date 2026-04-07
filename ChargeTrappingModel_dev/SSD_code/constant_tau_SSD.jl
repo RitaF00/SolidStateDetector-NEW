@@ -1,5 +1,6 @@
 using Pkg
-Pkg.activate(".")
+Pkg.activate(".")  # Assicurati di essere in ~/Phd/ChargeTrappingModel_dev/SSD_code
+push!(LOAD_PATH, joinpath(pwd(), "SolidStateDetectors_local_version", "src"))
 using Plots
 using Unitful
 using SolidStateDetectors

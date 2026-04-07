@@ -26,8 +26,8 @@ Lz = 0.2
 dx = 0.001   # Li diffusion slice in cm (10 µm)
 α = 1.6 * 1e-11     # thinning factor
 FCCD_cm = 0.1
-
-
+x_RDR = 0.065 # cm
+r_Li = 0.002
 
 #---------------
 # Li-layer characteristics:
@@ -54,7 +54,7 @@ Na = 3e9 #cm^-3
 Δt = 1.0      #ns
 t_max = 10000 #ns
 T_diff = 90.0 #k
-
+Nt = Int(t_max / Δt)
 # the function uses parameters for concentration expressed in m^-3
 function _calculate_mobility_with_impurities_hole(
     Nn, bulk_imp, surface_imp, temperature)
@@ -73,9 +73,8 @@ end
 # Generation cells with Li point-like
 # -----------------------------
 function generate_Li_cells(Lx, Ly, Lz, dx, α)
-
-    cell_size = 0.0020 # dimension of the grid
-
+    # Griglia per celle di Li
+    cell_size = 0.002 # 20 μm
     nx = Int(Lx / cell_size)
     ny = Int(Ly / cell_size)
     nz = Int(Lz / cell_size)
@@ -86,29 +85,30 @@ function generate_Li_cells(Lx, Ly, Lz, dx, α)
     total_Li = 0
 
     for xi in x_slices
+        # Genera Li solo se xi < x_RDR
+        if xi < x_RDR
+            Nd_val = Ns * erfc(xi / (2 * sqrt(D_Li * t_ann)))
+            dV = dx * Ly * Lz
+            λ = α * Nd_val * dV
+            N_i = rand(Poisson(λ))
 
-        Nd_val = Ns * erfc(xi / (2 * sqrt(D_Li * t_ann)))
-        dV = dx * Ly * Lz
-        λ = α * Nd_val * dV
+            total_Li += N_i
 
-        N_i = rand(Poisson(λ))
-        total_Li += N_i
-        for _ in 1:N_i
+            for _ in 1:N_i
+                x_pos = xi + rand() * dx
+                y_pos = rand() * Ly
+                z_pos = rand() * Lz
 
-            x_pos = xi + rand() * dx
-            y_pos = rand() * Ly
-            z_pos = rand() * Lz
+                ix = clamp(Int(floor(x_pos / cell_size)) + 1, 1, nx)
+                iy = clamp(Int(floor(y_pos / cell_size)) + 1, 1, ny)
+                iz = clamp(Int(floor(z_pos / cell_size)) + 1, 1, nz)
 
-            ix = clamp(Int(floor(x_pos / cell_size)) + 1, 1, nx)
-            iy = clamp(Int(floor(y_pos / cell_size)) + 1, 1, ny)
-            iz = clamp(Int(floor(z_pos / cell_size)) + 1, 1, nz)
-
-            push!(cells[ix, iy, iz], (x_pos, y_pos, z_pos))
+                push!(cells[ix, iy, iz], (x_pos, y_pos, z_pos))
+            end
         end
     end
 
-    println("total number of Li generated = ", total_Li)
-
+    println("Numero totale di atomi Li generati = ", total_Li)
     return cells, nx, ny, nz, cell_size
 end
 
@@ -142,7 +142,7 @@ function multiple_charges_trapping_3D(x_charges, N, cells, cell_size)
         kB = 1.380649e-23   # J/K
         e = 1.602176634e-19 # C
         D = (kB * T_diff / e) * μh * 1e-9 # Conversion in cm²/ns
-        σ = sqrt.(2 .* D .* Δt)
+        σ = sqrt.(6 .* D .* Δt)  #6 --> 3D diffusion
 
         for i in 1:Nt
 
@@ -277,11 +277,11 @@ results = Dict(
 # -----------------------------
 # Salvataggio su file JSON
 # -----------------------------
-open("Diffusivity_CCE.json", "w") do f
+open("Diffusivity_CCE_3D.json", "w") do f
     JSON.print(f, results, 4)  # 4 = indentazione bella leggibile
 end
 
-println("File JSON salvato: Diffusivity_CCE.json")
+println("File JSON salvato: Diffusivity_CCE_3D.json")
 
 
 

@@ -1,0 +1,5 @@
+impurity_density:
+  name: linear
+  offset: -1e7
+  gradient:
+    z: -1e5
