@@ -1,13 +1,13 @@
-abstract type AbstractChargeTrappingModel{T <: SSDFloat} end
+abstract type AbstractChargeTrappingModel{T<:SSDFloat} end
 
-function _calculate_signal( 
-        ::AbstractChargeTrappingModel{T},
-        path::AbstractVector{CartesianPoint{T}}, 
-        pathtimestamps::AbstractVector{T}, 
-        charge::T,          
-        wpot::Interpolations.Extrapolation{T, 3}, 
-        point_types::PointTypes{T, N, S}
-    ) where {T <: SSDFloat, N, S}
+function _calculate_signal(
+    ::AbstractChargeTrappingModel{T},
+    path::AbstractVector{CartesianPoint{T}},
+    pathtimestamps::AbstractVector{T},
+    charge::T,
+    wpot::Interpolations.Extrapolation{T,3},
+    point_types::PointTypes{T,N,S}
+) where {T<:SSDFloat,N,S}
     throw("For the chosen charge trapping model, no method for `_calculate_signal` is implemented.")
 end
 
@@ -19,7 +19,7 @@ Charge trapping model, in which no charges are trapped during the charge drift.
 
 This model is the default when no charge trapping model is defined in the configuration file.
 """
-struct NoChargeTrappingModel{T <: SSDFloat} <: AbstractChargeTrappingModel{T} end
+struct NoChargeTrappingModel{T<:SSDFloat} <: AbstractChargeTrappingModel{T} end
 
 function _signal!(
     ::NoChargeTrappingModel{T},
@@ -27,25 +27,25 @@ function _signal!(
     w::T,
     ::Base.RefValue{T};
     kwargs...
-) where {T <: SSDFloat}
-    
+) where {T<:SSDFloat}
+
     return w * q[]
 end
 
-function _calculate_signal( 
-        ctm::NoChargeTrappingModel{T},
-        path::AbstractVector{CartesianPoint{T}}, 
-        pathtimestamps::AbstractVector{T}, 
-        charge::T,          
-        wpot::Interpolations.Extrapolation{T, 3}, 
-        point_types::PointTypes{T, N, S}
-    )::Vector{T} where {T <: SSDFloat, N, S}
+function _calculate_signal(
+    ctm::NoChargeTrappingModel{T},
+    path::AbstractVector{CartesianPoint{T}},
+    pathtimestamps::AbstractVector{T},
+    charge::T,
+    wpot::Interpolations.Extrapolation{T,3},
+    point_types::PointTypes{T,N,S}
+)::Vector{T} where {T<:SSDFloat,N,S}
 
     tmp_signal::Vector{T} = Vector{T}(undef, length(pathtimestamps))
 
     q = Ref(charge)
     running_sum = Ref(zero(T))
-    
+
     @inbounds for i in eachindex(tmp_signal)
         w = get_interpolation(wpot, path[i], S)::T
         tmp_signal[i] = _signal!(ctm, q, w, running_sum)
@@ -54,8 +54,8 @@ function _calculate_signal(
     tmp_signal
 end
 
-NoChargeTrappingModel(args...; T::Type{<:SSDFloat} = Float32, kwargs...) = NoChargeTrappingModel{T}(args...; kwargs...)
-NoChargeTrappingModel{T}(config_dict::AbstractDict; kwargs...) where {T <: SSDFloat} = NoChargeTrappingModel{T}()
+NoChargeTrappingModel(args...; T::Type{<:SSDFloat}=Float32, kwargs...) = NoChargeTrappingModel{T}(args...; kwargs...)
+NoChargeTrappingModel{T}(config_dict::AbstractDict; kwargs...) where {T<:SSDFloat} = NoChargeTrappingModel{T}()
 
 
 """
@@ -70,7 +70,7 @@ Charge trapping model presented in [Boggs _et al._ (2023)](https://doi.org/10.10
 
 See also [Charge Trapping Models](@ref).
 """
-struct BoggsChargeTrappingModel{T <: SSDFloat} <: AbstractChargeTrappingModel{T}
+struct BoggsChargeTrappingModel{T<:SSDFloat} <: AbstractChargeTrappingModel{T}
     nσe::T  # in m^-1
     nσh::T  # in m^-1
     meffe::T # in units of me
@@ -86,7 +86,7 @@ function _signal!(
     nσ::T=zero(T),
     Δl::T=zero(T),
     kwargs...
-) where {T <: SSDFloat}
+) where {T<:SSDFloat}
 
     Δq::T = q[] * nσ * Δl
     q[] -= Δq
@@ -94,29 +94,29 @@ function _signal!(
     return running_sum[] + w * q[]
 end
 
-function _calculate_signal( 
-        ctm::BoggsChargeTrappingModel{T},
-        path::AbstractVector{CartesianPoint{T}}, 
-        pathtimestamps::AbstractVector{T}, 
-        charge::T,          
-        wpot::Interpolations.Extrapolation{T, 3},
-        point_types::PointTypes{T, N, S}
-    )::Vector{T} where {T <: SSDFloat, N, S}
+function _calculate_signal(
+    ctm::BoggsChargeTrappingModel{T},
+    path::AbstractVector{CartesianPoint{T}},
+    pathtimestamps::AbstractVector{T},
+    charge::T,
+    wpot::Interpolations.Extrapolation{T,3},
+    point_types::PointTypes{T,N,S}
+)::Vector{T} where {T<:SSDFloat,N,S}
 
     tmp_signal::Vector{T} = Vector{T}(undef, length(pathtimestamps))
 
     q = Ref(charge)
     running_sum = Ref(zero(T))
-    
+
     vth::T = sqrt(3 * kB * ctm.temperature / (ifelse(charge > 0, ctm.meffh, ctm.meffe) * me)) # in m/s
     nσ::T = ifelse(charge > 0, ctm.nσh, ctm.nσe)
-    
+
     @inbounds for i in eachindex(tmp_signal)
         Δldrift::T = (i > 1) ? norm(path[i] - path[i-1]) : zero(T)
         Δl::T = Δldrift > 0 ? hypot(Δldrift, vth * (pathtimestamps[i] - pathtimestamps[i-1])) : zero(T)
         w::T = i > 1 ? get_interpolation(wpot, path[i], S) : zero(T)
 
-        tmp_signal[i] = _signal!( ctm, q, w, running_sum; nσ=nσ, Δl=Δl )
+        tmp_signal[i] = _signal!(ctm, q, w, running_sum; nσ=nσ, Δl=Δl)
     end
 
     tmp_signal
@@ -124,7 +124,7 @@ end
 
 
 BoggsChargeTrappingModel(args...; T::Type{<:SSDFloat}, kwargs...) = BoggsChargeTrappingModel{T}(args...; kwargs...)
-function BoggsChargeTrappingModel{T}(config_dict::AbstractDict = Dict(); temperature::RealQuantity = T(78)) where {T <: SSDFloat}
+function BoggsChargeTrappingModel{T}(config_dict::AbstractDict=Dict(); temperature::RealQuantity=T(78)) where {T<:SSDFloat}
     nσe::T = ustrip(u"m^-1", inv(1020u"cm"))
     nσh::T = ustrip(u"m^-1", inv(2040u"cm"))
     meffe::T = 0.12
@@ -136,18 +136,32 @@ function BoggsChargeTrappingModel{T}(config_dict::AbstractDict = Dict(); tempera
     end
 
     parameters = haskey(config_dict, "parameters") ? config_dict["parameters"] : config_dict
-    
-    allowed_keys = ("nσe","nσe-1","nσh","nσh-1","meffe","meffh","temperature")
+
+    allowed_keys = ("nσe", "nσe-1", "nσh", "nσh-1", "meffe", "meffh", "temperature")
     k = filter(k -> !(k in allowed_keys), keys(parameters))
     !isempty(k) && @warn "The following keys will be ignored: $(k).\nAllowed keys are: $(allowed_keys)"
 
-    if haskey(parameters, "nσe")   nσe =     _parse_value(T, parameters["nσe"], internal_length_unit^-1) end
-    if haskey(parameters, "nσe-1") nσe = inv(_parse_value(T, parameters["nσe-1"], internal_length_unit)) end
-    if haskey(parameters, "nσh")   nσh =     _parse_value(T, parameters["nσh"], internal_length_unit^-1) end
-    if haskey(parameters, "nσh-1") nσh = inv(_parse_value(T, parameters["nσh-1"], internal_length_unit)) end
-    if haskey(parameters, "meffe") meffe =   _parse_value(T, parameters["meffe"], Unitful.NoUnits) end
-    if haskey(parameters, "meffh") meffh =   _parse_value(T, parameters["meffh"], Unitful.NoUnits) end
-    if haskey(parameters, "temperature") temperature = _parse_value(T, parameters["temperature"], internal_temperature_unit) end
+    if haskey(parameters, "nσe")
+        nσe = _parse_value(T, parameters["nσe"], internal_length_unit^-1)
+    end
+    if haskey(parameters, "nσe-1")
+        nσe = inv(_parse_value(T, parameters["nσe-1"], internal_length_unit))
+    end
+    if haskey(parameters, "nσh")
+        nσh = _parse_value(T, parameters["nσh"], internal_length_unit^-1)
+    end
+    if haskey(parameters, "nσh-1")
+        nσh = inv(_parse_value(T, parameters["nσh-1"], internal_length_unit))
+    end
+    if haskey(parameters, "meffe")
+        meffe = _parse_value(T, parameters["meffe"], Unitful.NoUnits)
+    end
+    if haskey(parameters, "meffh")
+        meffh = _parse_value(T, parameters["meffh"], Unitful.NoUnits)
+    end
+    if haskey(parameters, "temperature")
+        temperature = _parse_value(T, parameters["temperature"], internal_temperature_unit)
+    end
     BoggsChargeTrappingModel{T}(nσe, nσh, meffe, meffh, temperature)
 end
 
@@ -165,12 +179,12 @@ This constant-lifetime-based charge trapping model is similar to the Boggs model
 See also [Charge Trapping Models](@ref).
 """
 
-struct ConstantLifetimeChargeTrappingModel{T <: SSDFloat} <: AbstractChargeTrappingModel{T}
+struct ConstantLifetimeChargeTrappingModel{T<:SSDFloat} <: AbstractChargeTrappingModel{T}
     τh::T
     τe::T
 end
 
-function check_lifetime(model::AbstractChargeTrappingModel{T}, charge::T, pathtimestamps::AbstractVector{T}) where {T <: SSDFloat}
+function check_lifetime(model::AbstractChargeTrappingModel{T}, charge::T, pathtimestamps::AbstractVector{T}) where {T<:SSDFloat}
     τ = ifelse(charge > 0, model.τh, model.τe)
     Δt_minimum = minimum(diff(pathtimestamps))
     if τ < Δt_minimum
@@ -187,7 +201,7 @@ function _signal!(
     τ::T=T(Inf),
     Δt::T=zero(T),
     kwargs...
-) where {T <: SSDFloat}
+) where {T<:SSDFloat}
 
     Δq::T = q[] * Δt / τ
     q[] -= Δq
@@ -195,35 +209,35 @@ function _signal!(
     return running_sum[] + w * q[]
 end
 
-function _calculate_signal( 
-        ctm::ConstantLifetimeChargeTrappingModel{T},
-        path::AbstractVector{CartesianPoint{T}}, 
-        pathtimestamps::AbstractVector{T}, 
-        charge::T,          
-        wpot::Interpolations.Extrapolation{T, 3},
-        point_types::PointTypes{T, N, S}
-    )::Vector{T} where {T <: SSDFloat, N, S}
-    
+function _calculate_signal(
+    ctm::ConstantLifetimeChargeTrappingModel{T},
+    path::AbstractVector{CartesianPoint{T}},
+    pathtimestamps::AbstractVector{T},
+    charge::T,
+    wpot::Interpolations.Extrapolation{T,3},
+    point_types::PointTypes{T,N,S}
+)::Vector{T} where {T<:SSDFloat,N,S}
+
     tmp_signal::Vector{T} = Vector{T}(undef, length(pathtimestamps))
 
     q = Ref(charge)
     running_sum = Ref(zero(T))
 
     τ::T = check_lifetime(ctm, charge, pathtimestamps)
-    
+
     @inbounds for i in eachindex(tmp_signal)
-        
+
         Δt::T = (i > 1) ? (pathtimestamps[i] - pathtimestamps[i-1]) : zero(T)
         w::T = i > 1 ? get_interpolation(wpot, path[i], S) : zero(T)
-        
-        tmp_signal[i] = _signal!( ctm, q, w, running_sum; τ=τ, Δt=Δt )
+
+        tmp_signal[i] = _signal!(ctm, q, w, running_sum; τ=τ, Δt=Δt)
     end
- 
+
     tmp_signal
 end
 
 ConstantLifetimeChargeTrappingModel(args...; T::Type{<:SSDFloat}, kwargs...) = ConstantLifetimeChargeTrappingModel{T}(args...; kwargs...)
-function ConstantLifetimeChargeTrappingModel{T}(config_dict::AbstractDict = Dict()) where {T <: SSDFloat}
+function ConstantLifetimeChargeTrappingModel{T}(config_dict::AbstractDict=Dict()) where {T<:SSDFloat}
     τh::T = ustrip(u"s", 1u"ms")
     τe::T = ustrip(u"s", 1u"ms")
 
@@ -237,8 +251,12 @@ function ConstantLifetimeChargeTrappingModel{T}(config_dict::AbstractDict = Dict
     k = filter(k -> !(k in allowed_keys), keys(parameters))
     !isempty(k) && @warn "The following keys will be ignored: $(k).\nAllowed keys are: $(allowed_keys)"
 
-    if haskey(parameters, "τh")   τh =     _parse_value(T, parameters["τh"], internal_time_unit) end
-    if haskey(parameters, "τe")   τe =     _parse_value(T, parameters["τe"], internal_time_unit) end
+    if haskey(parameters, "τh")
+        τh = _parse_value(T, parameters["τh"], internal_time_unit)
+    end
+    if haskey(parameters, "τe")
+        τe = _parse_value(T, parameters["τe"], internal_time_unit)
+    end
     ConstantLifetimeChargeTrappingModel{T}(τh, τe)
 end
 
@@ -260,24 +278,24 @@ _ctmodel_name(::BoggsChargeTrappingModel) = "Boggs"
 _ctmodel_name(::ConstantLifetimeChargeTrappingModel) = "ConstantLifetime"
 _ctmodel_name(::NoChargeTrappingModel) = "NoChargeTrapping"
 
-has_inactive_layer(point_types::Array{PointType, 3}) = any(is_in_inactive_layer, point_types)
+has_inactive_layer(point_types::Array{PointType,3}) = any(is_in_inactive_layer, point_types)
 
-struct CombinedChargeTrappingModel{T <: SSDFloat, BCTM <: AbstractChargeTrappingModel{T}, ICTM <: AbstractChargeTrappingModel{T}, G <: Union{<:AbstractGeometry, Nothing}} <: AbstractChargeTrappingModel{T}
+struct CombinedChargeTrappingModel{T<:SSDFloat,BCTM<:AbstractChargeTrappingModel{T},ICTM<:AbstractChargeTrappingModel{T},G<:Union{<:AbstractGeometry,Nothing}} <: AbstractChargeTrappingModel{T}
     bulk_charge_trapping_model::BCTM
     inactive_charge_trapping_model::ICTM
     inactive_layer_geometry::G
 end
 
 
-function _calculate_signal( 
-        ctm::CombinedChargeTrappingModel{T},
-        path::AbstractVector{CartesianPoint{T}}, 
-        pathtimestamps::AbstractVector{T}, 
-        charge::T,          
-        wpot::Interpolations.Extrapolation{T, 3},
-        point_types::PointTypes{T, N, S}
-    )::Vector{T} where {T <: SSDFloat, N, S}
-    
+function _calculate_signal(
+    ctm::CombinedChargeTrappingModel{T},
+    path::AbstractVector{CartesianPoint{T}},
+    pathtimestamps::AbstractVector{T},
+    charge::T,
+    wpot::Interpolations.Extrapolation{T,3},
+    point_types::PointTypes{T,N,S}
+)::Vector{T} where {T<:SSDFloat,N,S}
+
     tmp_signal::Vector{T} = Vector{T}(undef, length(pathtimestamps))
 
     q = Ref(charge)
@@ -290,7 +308,7 @@ function _calculate_signal(
 
     τ::T = zero(T)
     τ_inactive::T = zero(T)
-    
+
     vth::T = zero(T)
     nσ::T = zero(T)
 
@@ -305,23 +323,23 @@ function _calculate_signal(
         τ_inactive = check_lifetime(ctm.inactive_charge_trapping_model, charge, pathtimestamps)
     end
 
-    
+
     @inbounds for i in eachindex(tmp_signal)
 
         in_inactive_region = in_inactive_layer(path[i], ctm.inactive_layer_geometry, point_types)
-        
+
         Δt::T = (i > 1) ? (pathtimestamps[i] - pathtimestamps[i-1]) : zero(T)
         w::T = i > 1 ? get_interpolation(wpot, path[i], S) : zero(T)
 
         Δldrift::T = (i > 1) ? norm(path[i] - path[i-1]) : zero(T)
         Δl::T = Δldrift > 0 ? hypot(Δldrift, vth * (pathtimestamps[i] - pathtimestamps[i-1])) : zero(T)
-        
+
         if in_inactive_region
             tmp_signal[i] = _signal!(ctm.inactive_charge_trapping_model, q, w, running_sum;
-                                     τ=τ_inactive, Δt=Δt)
+                τ=τ_inactive, Δt=Δt)
         else
             tmp_signal[i] = _signal!(ctm.bulk_charge_trapping_model, q, w, running_sum;
-                                     nσ=nσ, Δl=Δl, τ=τ, Δt=Δt)
+                nσ=nσ, Δl=Δl, τ=τ, Δt=Δt)
         end
     end
     tmp_signal
@@ -330,7 +348,7 @@ end
 
 
 CombinedChargeTrappingModel(args...; T::Type{<:SSDFloat}, kwargs...) = CombinedChargeTrappingModel{T}(args...; kwargs...)
-function CombinedChargeTrappingModel{T}(config_dict::AbstractDict = Dict(); temperature::RealQuantity = T(78)) where {T <: SSDFloat}
+function CombinedChargeTrappingModel{T}(config_dict::AbstractDict=Dict(); temperature::RealQuantity=T(78)) where {T<:SSDFloat}
 
     if haskey(config_dict, "model") && config_dict["model"] !== nothing && !(haskey(config_dict, "parameters"))
         throw(ConfigFileError("`CombinedChargeTrappingModel` does not have `parameters`"))
@@ -346,7 +364,7 @@ function CombinedChargeTrappingModel{T}(config_dict::AbstractDict = Dict(); temp
             model = config_dict["model"]
             if isnothing(model)
                 throw(ConfigFileError("`model` is defined but empty in config. Remove it or provide a valid name."))
-        elseif model == "Boggs"
+            elseif model == "Boggs"
                 BoggsChargeTrappingModel{T}(config_dict; temperature)
             elseif model == "ConstantLifetime"
                 ConstantLifetimeChargeTrappingModel{T}(config_dict)
@@ -355,7 +373,7 @@ function CombinedChargeTrappingModel{T}(config_dict::AbstractDict = Dict(); temp
             end
         end
     end
-    
+
     # Rename 'parameters_inactive' to be 'parameters'
     tmp = copy(config_dict)
     if haskey(tmp, "parameters_inactive")
@@ -364,19 +382,21 @@ function CombinedChargeTrappingModel{T}(config_dict::AbstractDict = Dict(); temp
         end
         tmp["parameters"] = tmp["parameters_inactive"]
     end
-    
-    inactive_charge_trapping_model = if haskey(tmp, "model_inactive") && tmp["model_inactive"] == "ConstantLifetime"     
+
+    inactive_charge_trapping_model = if haskey(tmp, "model_inactive") && tmp["model_inactive"] == "ConstantLifetime"
         ConstantLifetimeChargeTrappingModel{T}(tmp)
     else
-        if !isnothing(config_dict["model_inactive"]) @warn "Unknown inactive charge trapping model, running `NoChargeTrappingModel` inside inactive" end
+        if !isnothing(config_dict["model_inactive"])
+            @warn "Unknown inactive charge trapping model, running `NoChargeTrappingModel` inside inactive"
+        end
         NoChargeTrappingModel{T}()
     end
-    
+
     inactive_layer_geometry = haskey(config_dict, "inactive_layer_geometry") ? config_dict["inactive_layer_geometry"] : nothing
-    
-CombinedChargeTrappingModel{T, typeof(bulk_charge_trapping_model), typeof(inactive_charge_trapping_model), typeof(inactive_layer_geometry)}(
-    bulk_charge_trapping_model,
-    inactive_charge_trapping_model,
-    inactive_layer_geometry
-)
+
+    CombinedChargeTrappingModel{T,typeof(bulk_charge_trapping_model),typeof(inactive_charge_trapping_model),typeof(inactive_layer_geometry)}(
+        bulk_charge_trapping_model,
+        inactive_charge_trapping_model,
+        inactive_layer_geometry
+    )
 end
