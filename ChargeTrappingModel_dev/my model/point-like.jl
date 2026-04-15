@@ -8,12 +8,13 @@ using JSON
 # -----------------------------
 # Parametri fisici
 # -----------------------------
-Lx = 0.2  #mm
+Lx = 0.2  #cm in mm
 Ly = 0.2
 Lz = 0.2
 
-dx = 0.001   # slice per diffusione Li in mm (1 µm)
+dx = 0.001   # slice per diffusione Li in cm (10 µm)
 α = 1.6 * 1e-11     # thinning factor
+
 
 FCCD_cm = 0.1
 
@@ -54,7 +55,7 @@ ma ogni  cella ha un nummro di Li diverso, e non fissato ad 1.
 """
 function generate_Li_cells(Lx, Ly, Lz, dx, α)
 
-    cell_size = 0.0020 # creo una griglia di 20 μm in mm
+    cell_size = 0.0020 # creo una griglia di 20 μm in cm
 
     nx = Int(Lx / cell_size)
     ny = Int(Ly / cell_size)
@@ -208,10 +209,10 @@ display(p)
 # -----------------------------
 # Simulazione CCE
 # -----------------------------
-x_pos = 0:0.002:0.11
+x_pos = 0:0.001:0.11
 
 N_charges = 500
-N_repeat = 25
+N_repeat = 10
 
 N_matrix = zeros(Int, length(x_pos), N_repeat)
 

@@ -42,7 +42,7 @@ Nt = Int(t_max / Δt)
 # -----------------------------
 # Raggio precipitati
 # -----------------------------
-r_Li = 0.002  # 20 μm in mm
+r_Li = 0.002  # 20 μm in cm
 
 # -----------------------------
 # Funzione generazione celle Li
@@ -158,10 +158,10 @@ cells, nx, ny, nz, cell_size = generate_Li_cells(Lx, Ly, Lz, dx, α)
 # -----------------------------
 # CCE e probabilità di trapping
 # -----------------------------
-dist = 0.002
+dist = 0.001
 x_pos = 0:dist:0.12
 N_charges = 500
-N_repeat = 25
+N_repeat = 10
 
 CCE_mean = zeros(length(x_pos))
 CCE_std = zeros(length(x_pos))

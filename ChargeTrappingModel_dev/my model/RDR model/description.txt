@@ -1,0 +1,15 @@
+In questa cartella ci metterò il codice
+nel quale entrerà l'idea di RDR
+
+Qui la concnetrazione dei preicpitati di litio 
+verrà modellata dalla differenza
+della concentrazione di litio con il valore
+di concentrazione di supersaturazione.
+
+
+--> questo valore si comporta come unasistematica
+in quanto non sappiamo davvero quanto vale.
+Per ora lo setterò a 10^14.
+
+Se dovessimo usere il valore di concentrazione
+a teperatura ambiente dovremmo usare 10^12

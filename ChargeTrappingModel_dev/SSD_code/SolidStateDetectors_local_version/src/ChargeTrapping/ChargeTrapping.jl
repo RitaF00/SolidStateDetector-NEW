@@ -187,9 +187,11 @@ end
 function check_lifetime(model::AbstractChargeTrappingModel{T}, charge::T, pathtimestamps::AbstractVector{T}) where {T<:SSDFloat}
     τ = ifelse(charge > 0, model.τh, model.τe)
     Δt_minimum = minimum(diff(pathtimestamps))
+    """
     if τ < Δt_minimum
         throw(ArgumentError("The carrier lifetime should be at least bigger than Δt"))
     end
+    """
     return τ
 end
 
@@ -203,7 +205,7 @@ function _signal!(
     kwargs...
 ) where {T<:SSDFloat}
 
-    Δq::T = q[] * Δt / τ
+    Δq::T = q[] * (1 - exp(-Δt / τ))
     q[] -= Δq
     running_sum[] += w * Δq
     return running_sum[] + w * q[]

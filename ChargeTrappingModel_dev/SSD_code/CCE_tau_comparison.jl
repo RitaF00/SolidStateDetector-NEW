@@ -11,12 +11,21 @@ using JSON
 using LegendHDF5IO
 using ProgressMeter
 using HDF5
+using Distributions
 using SpecialFunctions
 using SolidStateDetectors: Electron, Hole
 
 const T = Float64
 
 println(pathof(SolidStateDetectors))
+
+"""
+In questo notebook mostro la differenza tra la curva CCE 
+ottenuta con tau = cost e tau(x), ovver il tempo di vita costante
+dipende dalla posizione della quale i portatori vengono generati.
+ATTENZIONE! confronto fatto ponendo alpha = 1.6 * 10^-11 --> non so se va bene usarlo per confrontare.
+"""
+
 
 # =========================
 # ⚙️ CONFIGURAZIONE
@@ -53,7 +62,7 @@ else
     g = sim.electric_potential.grid
     ax1, ax2, ax3 = g.axes
 
-    bulk_tick_dis = 0.05u"mm"
+    bulk_tick_dis = 0.1u"mm"
     dl_tick_dis = 0.01u"mm"
 
     user_additional_ticks_ax1 = sort(vcat(ax1.interval.left*u"m":bulk_tick_dis:pn_r, pn_r:dl_tick_dis:ax1.interval.right*u"m"))
@@ -100,11 +109,11 @@ plot(
 # =======
 
 # FONDAMENTALE 
-dx = 0.1u"mm"
+dx = 0.01u"mm"
 depth_list = 0.1u"mm":dx:(det_r-pn_r)
 println("Simulating CCE with default τ")
-totTime = 10000u"ns"
-totEnergy = 5u"keV" # --> simulating ~339 carrier pairs
+totTime = 500u"ns"
+totEnergy = 10u"keV" # --> simulating ~339 carrier pairs
 N = Int(totEnergy ÷ 2.95u"eV")  # 2.95 keV is the average energy needed to create an electron-hole pair in germanium
 
 
@@ -128,9 +137,9 @@ eff_list_tau_cost = ustrip.(eff_list_costτ)  # rimuove l'unità eV
 eff_list_tau_cost = sqrt.(eff_list_tau_cost ./ N)
 
 plot!(pulse_plot, legend=:topright, xlabel="Time / ns", ylabel="Amplitude / e", unitformat=:nounit)
-cce_plot = plot(depth_list, eff_list_costτ, xlabel="Depth to surface / mm", ylabel="Charge collection efficiency", lw=2, color=:black, label="", unitformat=:nounit)
-plot(pulse_plot, cce_plot, layout=(1, 2), size=(1000, 400), margin=5Plots.mm)
-
+cce_plot = plot(depth_list, eff_list_costτ, xlabel="Depth to surface / mm", frame=:box, ylabel="Charge collection efficiency", lw=2, color=:black, label="", unitformat=:nounit)
+p = plot(pulse_plot, cce_plot, layout=(1, 2), size=(1000, 400), margin=5Plots.mm, dpi=300)
+savefig(p, "plot/const tau/wavefrom_CCE_const_tau.png")
 
 # ======
 # Mobility curves
@@ -146,9 +155,9 @@ mobility_list = map(depth -> let pt::CartesianPoint{T} = CartesianPoint(det_r - 
 
 
 
-# ===========
+# ==========================================================================================
 # Diffusion characteristics
-# ===========
+# ==========================================================================================
 
 
 Δt = 1e-9u"s"
@@ -193,7 +202,7 @@ r_Li = uconvert(u"m", 0.002u"cm")
 # ==========
 # carriers lifetime definition
 # ==========
-function τ_hole(x, α=1.6e-11)
+function τ_hole(x, α=5e-12)
     # --- Constants (SI) ---
     m0 = 9.11e-31u"kg"
     m_eff_hole = 0.21 * m0
@@ -211,7 +220,7 @@ function τ_hole(x, α=1.6e-11)
     τ = 1.0 ./ (α .* Nd_val .* v_th .* σ_trap)
     return uconvert.(u"s", τ)
 end
-function τ_electron(x, α=1.6e-11)
+function τ_electron(x, α=5e-12)
     # --- Constants (SI) ---
     m0 = 9.11e-31u"kg"
     m_eff_electron = 0.12 * m0
@@ -230,6 +239,12 @@ function τ_electron(x, α=1.6e-11)
     return uconvert.(u"s", τ)
 end
 
+"""
+ATTENZIONE : fatto in questo modo, in realtà le cariche prodotte nel punto x anxche se si muovono cosntinunano ad avere un tempo di vita 
+costante che dipende dalla posizione iniziale in cui sono state create.
+Io invece vorrei che ad ogni passo di tempo, la carica avesse un tempo di vita che dipende dalla posizione in cui si trova in quel momento, non da quella in cui è stata creata.
+"""
+
 
 # =========
 # New CCE curves with a position-dependent lifetime
@@ -243,7 +258,6 @@ pbar = Progress(length(depth_list))
 eff_list_taux = map(depth -> begin
         # Calcolo della posizione di partenza
         r = det_r - depth
-
         # τh per questa profondità
         τh = ustrip(u"s", τ_hole(depth))
         τe = ustrip(u"s", τ_electron(depth))
@@ -262,8 +276,8 @@ eff_list_taux = map(depth -> begin
 
         sim.detector = SolidStateDetector(sim.detector, new_ctm)
 
-        println("τh = ", sim.detector.semiconductor.charge_trapping_model.inactive_charge_trapping_model.τh)
-        println("τe = ", sim.detector.semiconductor.charge_trapping_model.inactive_charge_trapping_model.τe)
+        #println("τh = ", sim.detector.semiconductor.charge_trapping_model.inactive_charge_trapping_model.τh)
+        #println("τe = ", sim.detector.semiconductor.charge_trapping_model.inactive_charge_trapping_model.τe)
         push!(τ_listh, sim.detector.semiconductor.charge_trapping_model.inactive_charge_trapping_model.τh)
         push!(τ_liste, sim.detector.semiconductor.charge_trapping_model.inactive_charge_trapping_model.τe)
         # Creazione eventi
@@ -288,41 +302,80 @@ eff_list_taux = map(depth -> begin
         maximum(pulse.signal) / N
 
     end, depth_list)
+idx = findfirst(x -> x ≥ 0.999, eff_list_taux)
+depth_cce1 = depth_list[idx]
+println("FCCD depth: ", depth_cce1)
+
 # efficienza senza unità
 eff_list_taux_num = ustrip.(eff_list_taux)  # rimuove l'unità eV
 err_eff_taux = sqrt.(eff_list_taux_num ./ N)
 #err_eff_taux = sqrt.(ustrip.(u"eV", eff_list_taux) ./ N)
-print("miao")
+
+#ptau = plot(depth_list, τ_listh .* 1e6, label="τh", xlabel="Depth to surface / mm", ylabel="Lifetime (μs)", lw=2)
+#plot!(ptau, depth_list, τ_liste .* 1e6, label="τe", lw=2)
+#hline!([1], lw=2, color=:deepskyblue, label="τ = 1 μs")
+#savefig(ptau, "plot/tau_x/lifetime_profile.png")
 
 plot!(pulse_plot, legend=:topright, xlabel="Time / ns", ylabel="Amplitude / e", unitformat=:nounit)
 cce_plot_taux = plot(depth_list, eff_list_taux, xlabel="Depth to surface / mm", ylabel="Charge collection efficiency", lw=2, color=:black, label="", unitformat=:nounit)
-plot(pulse_plot, cce_plot_taux, layout=(1, 2), size=(1000, 400), margin=5Plots.mm)
+p = plot(pulse_plot, cce_plot_taux, layout=(1, 2), size=(1000, 400), frame=:box, dpi=300, margin=5Plots.mm)
+savefig(p, "plot/tau_x/wavefrom_CCE_const_tau_x.png")
 
 
 
 # confronto con risultato di Claudia
-
-plot(
+using Measures
+residuals = eff_list_costτ .- eff_list_taux
+p1 = plot(
     depth_list,
     eff_list_costτ,
     yerr=eff_list_tau_cost,
     lw=2,
     label="τ = $τh_fixed",
     unitformat=:nounit,
-    xticks=0:0.1:maximum(ustrip.(depth_list)),  # tick x ogni 1 mm
-    yticks=0:0.1:1,                           # tick y ogni 0.05
-    #elw=0.5,                         # barre di errore sottili
-    xlabel="Depth to surface / mm",
+    xticks=0:0.1:maximum(ustrip.(depth_list)),
+    yticks=0:0.1:1,
+    xlabel="",  # remove x label here (will go on bottom plot)
     ylabel="Charge collection efficiency",
     legend=:topleft,
-    frame=:box,)
+    frame=:box,
+    title="Energy = $totEnergy "
+)
 
 plot!(
+    p1,
     depth_list,
     eff_list_taux,
     yerr=err_eff_taux,
     lw=2,
     label="τ(x)",
     unitformat=:nounit,
-    #elw=0.5,
 )
+
+p2 = scatter(
+    depth_list,
+    residuals,
+    lw=2,
+    color=:black,
+    label="Residuals",
+    xlabel="Depth to surface / mm",
+    ylabel="ΔCCE [τ - τ(x)]",
+    frame=:box,
+    legend=false,
+    unitformat=:nounit,
+    ylim=(-0.1, 0.05),  # set y-limits to focus on residuals
+    #ylim=(minimum(residuals), maximum(residuals))
+)
+
+# dashed grey line at 0
+hline!(p2, [0], linestyle=:dash, color=:gray)
+
+p = plot(
+    p1,
+    p2,
+    layout=grid(2, 1, heights=[0.7, 0.3]),
+    link=:x,        # share x-axis
+    dpi=300,
+    margin=0Plots.mm
+)
+savefig(p, "plot/comparison/CCE-comparison.png")

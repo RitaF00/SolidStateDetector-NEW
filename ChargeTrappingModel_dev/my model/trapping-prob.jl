@@ -7,6 +7,14 @@ using JSON
 using Statistics
 using LaTeXStrings
 
+"""
+Codice in cui vedo come si comporta una probabilità di raccolta che dipende dallo spazio.
+La carica (singola) viene generata e poi lasciata diffondere.
+Ad ogni passo x, tau viene calcolata --> si calcola poi la prbabilità che la carica venga intrappolata o no.
+Qui tau non è mai costante.
+"""
+
+
 # -----------------------------
 # Parametri geometrici (cm)
 # -----------------------------

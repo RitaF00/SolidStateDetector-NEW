@@ -1,2 +1,4 @@
 [deps]
+Interpolations = "a98d9a8b-a2ab-59e6-89dd-64a1c18fca59"
+Measures = "442fdcdd-2543-5da2-b0f3-8c86c306513e"
 SolidStateDetectors = "71e43887-2bd9-5f77-aebd-47f656f0a3f0"
