@@ -7,23 +7,26 @@ using ProgressMeter
 
 gr()
 
-"""
-In this notebook the Li sampling is explored addding the model
-of the depth with recombination dominated region (RDR)
-and also the effective number of lithium recombination sites
-given by Nd(x) - Nsat ( Nsat = 10^14 cm^-3)
-"""
+# =====================
+# FUNZIONE r_Li(x)
+# =====================
+function r_Li_depth(x, x_saturation)
+    if x <= x_saturation / 2
+        return 0.02   # 200 μm in cm
+    elseif x <= x_saturation
+        return 0.002  # 20 μm in cm
+    else
+        return 0.0
+    end
+end
 
 
 # =====================
 # Li generation
 # =====================
-Ni_arr = Vector{Float64}()
-Ni_err = Vector{Float64}()
-
 function generate_Li_cells(Lx, Ly, Lz, dx, α, Ns, D_Li, t_ann, x_saturation)
 
-    cell_size = 0.002  # cm (20 μm)
+    cell_size = 0.002  # 20 μm
 
     nx = Int(Lx / cell_size)
     ny = Int(Ly / cell_size)
@@ -31,7 +34,7 @@ function generate_Li_cells(Lx, Ly, Lz, dx, α, Ns, D_Li, t_ann, x_saturation)
 
     cells = [Vector{NTuple{3,Float64}}() for _ in 1:nx, _ in 1:ny, _ in 1:nz]
 
-    Nd_saturation = 1e14  # cm^-3
+    Nd_saturation = 1e14
     x_slices = 0:dx:Lx
     total_Li = 0
 
@@ -48,9 +51,6 @@ function generate_Li_cells(Lx, Ly, Lz, dx, α, Ns, D_Li, t_ann, x_saturation)
         λ = α * effective_Nd * dV
 
         N_i = rand(Poisson(λ))
-        push!(Ni_arr, N_i)
-        push!(Ni_err, sqrt(N_i))
-        #println(N_i)
         total_Li += N_i
 
         for _ in 1:N_i
@@ -77,7 +77,7 @@ end
 function multiple_charges_trapping_3D(
     x_charges, N, cells, cell_size,
     x_saturation, dx, Lx, Ly, Lz,
-    Nt, σ, FCCD_cm, r_Li
+    Nt, σ, FCCD_cm
 )
 
     if isa(x_charges, Number)
@@ -89,6 +89,10 @@ function multiple_charges_trapping_3D(
     collected_count = 0
     trapped_count = 0
 
+    # 🔥 search radius per precipitati grandi (200 μm)
+    max_r = 0.02
+    search_radius = ceil(Int, max_r / cell_size)
+
     for n in 1:N
 
         x = x_charges[n]
@@ -99,46 +103,38 @@ function multiple_charges_trapping_3D(
 
         for _ in 1:Nt
 
-            # -------------------------
-            # diffusion step
-            # -------------------------
+            # diffusion
             x += σ * randn()
             y += σ * randn()
             z += σ * randn()
 
-            # -------------------------
             # boundaries
-            # -------------------------
             x = clamp(x, 0, Lx)
             y = clamp(y, 0, Ly)
             z = clamp(z, 0, Lz)
 
-            # -------------------------
-            # collection electrode
-            # -------------------------
+            # collection
             if x >= FCCD_cm
                 collected_count += 1
                 break
             end
 
-            # -------------------------
-            # hard loss at entrance
-            # -------------------------
+            # loss at entrance
             if x <= dx
                 trapped = true
                 break
             end
 
-            # -------------------------
-            # trapping region only
-            # -------------------------
+            # trapping region
             if x <= x_saturation
 
                 ix = clamp(Int(floor(x / cell_size)) + 1, 1, nx)
                 iy = clamp(Int(floor(y / cell_size)) + 1, 1, ny)
                 iz = clamp(Int(floor(z / cell_size)) + 1, 1, nz)
 
-                for dxi in -1:1, dyi in -1:1, dzi in -1:1
+                for dxi in -search_radius:search_radius,
+                    dyi in -search_radius:search_radius,
+                    dzi in -search_radius:search_radius
 
                     jx, jy, jz = ix + dxi, iy + dyi, iz + dzi
 
@@ -146,7 +142,9 @@ function multiple_charges_trapping_3D(
 
                         for (px, py, pz) in cells[jx, jy, jz]
 
-                            if (x - px)^2 + (y - py)^2 + (z - pz)^2 < r_Li^2
+                            r_local = r_Li_depth(px, x_saturation)
+
+                            if (x - px)^2 + (y - py)^2 + (z - pz)^2 < r_local^2
                                 trapped = true
                                 break
                             end
@@ -159,9 +157,6 @@ function multiple_charges_trapping_3D(
                 end
             end
 
-            # -------------------------
-            # exit if trapped
-            # -------------------------
             if trapped
                 trapped_count += 1
                 break
@@ -174,16 +169,14 @@ end
 
 
 # =====================
-# PARAMETERS (cm)
+# PARAMETERS
 # =====================
 Lx = 0.2
 Ly = 0.2
-Lz = 0.2  # 2 mm in cm
+Lz = 0.2
 
-dx = 0.001  # 10 μm in  cm
-
-# IMPORTANT: must be inside domain
-FCCD_cm = 0.1  # 1 mm in cm
+dx = 0.001
+FCCD_cm = 0.1
 
 # diffusion
 D = 28.9
@@ -191,10 +184,6 @@ D = 28.9
 t_max = 10000
 Nt = Int(t_max / Δt)
 σ = sqrt(6 * D * Δt) * 1e-4
-# σ = sqrt(2 * D * Δt) * 1e-7  # if D in cm^2/s and Δt in ns
-
-# trapping radius (20 μm = 0.002 cm)
-r_Li = 0.002
 
 # annealing
 t_ann = 18 * 60
@@ -209,19 +198,19 @@ D_Li = D0 * exp(-H / (R * T_ann))
 
 Nd_saturation = 1e14
 
-# saturation depth profile
+# =====================
+# Saturation depth
+# =====================
 depth_list = 0:dx:0.11
 Nd(x) = Ns .* erfc.(x ./ (2 * sqrt(D_Li * t_ann)))
 Nd_vals = Nd(depth_list)
 
 diff_vals = Nd_vals .- Nd_saturation
-
-
 idx = findfirst(i -> diff_vals[i] <= 0, eachindex(diff_vals))
 saturation_depth = depth_list[idx]
 
 println("=============================================================================")
-println("Saturation depth = ", saturation_depth .* 10, "mm")
+println("Saturation depth = ", saturation_depth * 10, " mm")
 println("=============================================================================")
 
 
@@ -230,30 +219,12 @@ println("=======================================================================
 # =====================
 α = 1.6e-11
 
-println("=============================================================================")
 cells, nx, ny, nz, cell_size = generate_Li_cells(
     Lx, Ly, Lz, dx, α, Ns, D_Li, t_ann, saturation_depth
 )
+
 println("=============================================================================")
 
-x_slices = collect(0:dx:Lx)
-x_slices = x_slices[1:length(Ni_arr)]
-
-Ni_err = sqrt.(Ni_arr)
-
-p = scatter(
-    x_slices .* 10,
-    Ni_arr,
-    yerror=sqrt.(Ni_arr),
-    xlabel="depth (mm)",
-    ylabel="N Li / slice ",
-    label="Li (Poisson)",
-    markersize=2,
-    gridstyle=:dash,
-    gridalpha=0.05,
-    frame=:box,
-    yticks=0:5:maximum(Ni_arr * 1.2),)
-display(p)
 
 # =====================
 # CCE SIMULATION
@@ -262,14 +233,11 @@ x_pos = 0:dx:0.11
 N_charges = 250
 N_repeat = 10
 
-
-# matrix storage (LIKE CODE 2)
 CCE_matrix = zeros(length(x_pos), N_repeat)
 
 pbar = Progress(length(x_pos) * N_repeat)
 
 for (i, x0) in enumerate(x_pos)
-
     for j in 1:N_repeat
 
         collected, trapped =
@@ -278,25 +246,25 @@ for (i, x0) in enumerate(x_pos)
                 saturation_depth, dx,
                 Lx, Ly, Lz,
                 Nt, σ,
-                FCCD_cm, r_Li
+                FCCD_cm
             )
 
         CCE_matrix[i, j] = collected / N_charges
-
         next!(pbar)
     end
 end
 
+
 # =====================
-# STATISTICS (like Code 2)
+# STATISTICS
 # =====================
 CCE_mean = vec(mean(CCE_matrix, dims=2))
 CCE_std = vec(std(CCE_matrix, dims=2))
 
+
 # =====================
 # PLOT
 # =====================
-#=
 p = plot(x_pos .* 10, CCE_mean,
     ribbon=CCE_std,
     lw=2,
@@ -305,11 +273,16 @@ p = plot(x_pos .* 10, CCE_mean,
     label="CCE",
     frame=:box,
     size=(450, 600)
-)=#
+)
 
-filename = "JSON/Nd(x)-Nsat.json"
+
+# =====================
+# SAVE JSON
+# =====================
+filename = "JSON/Nd(x)-Nsat_variable_radius.json"
+
 results = Dict(
-    "x_pos" => collect(x_pos),        # range → array
+    "x_pos" => collect(x_pos),
     "CCE_mean" => CCE_mean,
     "CCE_std" => CCE_std
 )
@@ -319,12 +292,11 @@ if isfile(filename)
     risposta = readline()
 
     if lowercase(risposta) != "y"
-        println("Operazione annullata, file non modificato.")
+        println("Operazione annullata.")
         return
     end
 end
 
-# Salvataggio
 open(filename, "w") do f
     JSON.print(f, results, 4)
 end
@@ -332,4 +304,4 @@ end
 println("File JSON salvato: $filename")
 
 display(p)
-savefig(p, "Mycode_Nd(x)-Nsaturation.png")
+savefig(p, "CCE_variable_radius.png")
