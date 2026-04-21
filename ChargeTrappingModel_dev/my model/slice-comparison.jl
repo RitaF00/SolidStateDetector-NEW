@@ -90,7 +90,10 @@ n_prec_std_sorted = n_prec_std[sorted_indices]
 # Plot equispaziato con etichette in µm
 # -----------------------------
 p = plot(1:length(dx_values_cm), n_prec_mean_sorted,
-    yerr=n_prec_std_sorted,
+    #yerr=n_prec_std_sorted,
+    #markerstrokewidth=1, linewidth=1,
+    ribbon=n_prec_std_sorted,
+    fillalpha=0.25,
     lw=2,
     marker=:circle,
     xlabel="dx (µm)",
@@ -99,7 +102,7 @@ p = plot(1:length(dx_values_cm), n_prec_mean_sorted,
     legend=false,
     grid=true,
     frame=:box,
-    size=(800, 600))
+    size=(600, 400))
 
 savefig(p, "plot/slice-comparison.png")
 display(p)

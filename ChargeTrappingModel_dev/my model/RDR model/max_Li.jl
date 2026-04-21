@@ -7,6 +7,11 @@ using ProgressMeter
 
 gr()
 
+"""
+In questo codice guardo qual è il nuemro massimo di precipittai che posso mettere
+per ogni fetta facendo variare il raggio.
+"""
+
 # =========================
 # STRUCT
 # =========================
@@ -41,7 +46,7 @@ function truncated_poisson(λ, Nmax)
         return 0
     end
 
-    for _ in 1:50
+    for _ in 1:100
         n = rand(Poisson(λ))
         if n <= Nmax
             return n
@@ -101,7 +106,7 @@ function generate_Li_cells(
 
         V_slice = dV
 
-        f = 0.1
+        f = 1
 
         N_max = floor(Int, f * V_slice / V_li)
         #println(N_max)
@@ -137,96 +142,6 @@ function generate_Li_cells(
     return cells, nx, ny, nz, cell_size, Ni_arr
 end
 
-# =========================
-# CCE SIMULATION
-# =========================
-function multiple_charges_trapping_3D(
-    x_charges, N,
-    cells, cell_size,
-    x_saturation, dx,
-    Lx, Ly, Lz,
-    Nt, σ,
-    FCCD_cm
-)
-
-    if isa(x_charges, Number)
-        x_charges = fill(x_charges, N)
-    end
-
-    nx, ny, nz = size(cells)
-
-    collected_count = 0
-    trapped_count = 0
-
-    for n in 1:N
-
-        x = x_charges[n]
-        y = rand() * Ly
-        z = rand() * Lz
-
-        trapped = false
-
-        for _ in 1:Nt
-
-            # diffusion
-            x += σ * randn()
-            y += σ * randn()
-            z += σ * randn()
-
-            # boundaries
-            x = clamp(x, 0, Lx)
-            y = clamp(y, 0, Ly)
-            z = clamp(z, 0, Lz)
-
-            # collection
-            if x >= FCCD_cm
-                collected_count += 1
-                break
-            end
-
-            # entrance loss
-            if x <= dx
-                trapped = true
-                break
-            end
-
-            # trapping
-            if x <= x_saturation
-
-                ix = clamp(Int(floor(x / cell_size)) + 1, 1, nx)
-                iy = clamp(Int(floor(y / cell_size)) + 1, 1, ny)
-                iz = clamp(Int(floor(z / cell_size)) + 1, 1, nz)
-
-                for dxi in -1:1, dyi in -1:1, dzi in -1:1
-
-                    jx, jy, jz = ix + dxi, iy + dyi, iz + dzi
-
-                    if 1 ≤ jx ≤ nx && 1 ≤ jy ≤ ny && 1 ≤ jz ≤ nz
-
-                        for p in cells[jx, jy, jz]
-
-                            if (x - p.x)^2 + (y - p.y)^2 + (z - p.z)^2 < p.r^2
-                                trapped = true
-                                break
-                            end
-                        end
-                    end
-
-                    if trapped
-                        break
-                    end
-                end
-            end
-
-            if trapped
-                trapped_count += 1
-                break
-            end
-        end
-    end
-
-    return collected_count, trapped_count
-end
 
 # =========================
 # PARAMETERS
@@ -272,6 +187,8 @@ println("Saturation depth = ", saturation_depth * 10, " mm")
 # =========================
 # GENERATE DEFECTS
 # =========================
+
+#=
 α = 1.6e-11
 
 r_list = [0.002, 0.006, 0.012]
@@ -300,9 +217,10 @@ p1 = plot(
     ylabel="N Li / slice",
     frame=:box,
     gridalpha=0.05,
-    yticks=(0:5:maximum(Ni_all[1])),
+    yticks=(0:1:maximum(Ni_all[1])),
+    ylim=[0, 10],
     size=(400, 600),
-    dpi=300
+    #dpi=300
 )
 
 for i in 1:length(r_list)
@@ -322,77 +240,150 @@ end
 
 display(p1)
 savefig(p1, "plot/max_li.png")
-#=
-# =========================
-# CCE SIMULATION
-# =========================
-x_pos = 0:dx:0.11
-N_charges = 10
-N_repeat = 2
+=#
 
-CCE_matrix = zeros(length(x_pos), N_repeat)
 
-pbar = Progress(length(x_pos) * N_repeat)
+"""
+produzione dei precipitati utilizzando come volume 100 volte il raggio
+"""
 
-for (i, x0) in enumerate(x_pos)
-    for j in 1:N_repeat
 
-        collected, trapped =
-            multiple_charges_trapping_3D(
-                x0, N_charges,
-                cells, cell_size,
-                saturation_depth, dx,
-                Lx, Ly, Lz,
-                Nt, σ,
-                FCCD_cm
-            )
+function generate_Li_cells_prop_r_size(dx, α,
+    Ns, D_Li, t_ann,
+    x_saturation, r
+)
+    Lx = Ly = Lz = 100 * r
+    cell_size = 0.005  # cm (50 µm)
 
-        CCE_matrix[i, j] = collected / N_charges
+    nx = Int(Lx / cell_size)
+    ny = Int(Ly / cell_size)
+    nz = Int(Lz / cell_size)
 
-        next!(pbar)
+    cells = [Vector{LiParticle}() for _ in 1:nx, _ in 1:ny, _ in 1:nz]
+
+    Nd_saturation = 1e14
+
+    x_slices = 0:dx:Lx
+
+    Ni_arr = Float64[]
+
+    total_Li = 0
+
+    for xi in x_slices
+
+        if xi >= x_saturation
+            continue
+        end
+
+        # =========================
+        # ND PROFILE
+        # =========================
+        Nd_val = Ns * erfc(xi / (2 * sqrt(D_Li * t_ann)))
+        effective_Nd = max(Nd_val - Nd_saturation, 0.0)
+
+        dV = dx * Ly * Lz
+
+        λ = α * effective_Nd * dV
+
+        # =========================
+        # PARTICLE SIZE
+        # =========================
+        #r = r_Li_profile(xi)
+        V_li = (4 / 3) * π * r^3
+
+        V_slice = dV
+
+        f = 1
+
+        N_max = floor(Int, f * V_slice / V_li)
+        #println(N_max)
+
+        # Poisson constrained
+        N_i = truncated_poisson(λ, N_max)
+
+        push!(Ni_arr, N_i)
+
+        total_Li += N_i
+
+        # =========================
+        # PARTICLE GENERATION
+        # =========================
+        for _ in 1:N_i
+
+            x_pos = xi + rand() * dx
+            y_pos = rand() * Ly
+            z_pos = rand() * Lz
+
+            p = LiParticle(x_pos, y_pos, z_pos, r)
+
+            ix = clamp(Int(floor(x_pos / cell_size)) + 1, 1, nx)
+            iy = clamp(Int(floor(y_pos / cell_size)) + 1, 1, ny)
+            iz = clamp(Int(floor(z_pos / cell_size)) + 1, 1, nz)
+
+            push!(cells[ix, iy, iz], p)
+        end
     end
+
+    println("Total precipitates = ", total_Li)
+
+    return cells, nx, ny, nz, cell_size, Ni_arr
 end
 
-CCE_mean = vec(mean(CCE_matrix, dims=2));
-CCE_std = vec(std(CCE_matrix, dims=2));
 
+
+
+α = 1.6e-11
+alpha_list = [1.6e-11, 2e-12, 5e-13]
+alpha_list = [1.6e-11, 1.6e-11, 1.6e-11]
+r_list = [0.002, 0.006, 0.012]
+
+Ni_all = []
+labels = []
+for (i, r) in enumerate(r_list)
+    println("r = $(r*1e4) μm")
+    global cells, nx, ny, nz, cell_size, Ni_arr
+    cells, nx, ny, nz, cell_size, Ni_arr =
+        generate_Li_cells_prop_r_size(dx, alpha_list[i], Ns, D_Li, t_ann, saturation_depth, r)
+
+    push!(Ni_all, Ni_arr)
+    push!(labels, "r = $(round(r*1e4, digits=1)) µm ")
+end
 # =========================
-# PLOT CCE
+# PLOT Li distribution
 # =========================
-p2 = plot(
-    x_pos .* 10,
-    CCE_mean,
-    ribbon=CCE_std,
-    lw=2,
+x_slices = collect(0:dx:Lx)
+x_slices = x_slices[1:length(Ni_arr)]
+
+x_slices = collect(0:dx:Lx)
+
+p1 = plot(
     xlabel="depth (mm)",
-    ylabel="CCE",
-    label="CCE",
-    frame=:box
+    ylabel="N Li / slice",
+    frame=:box,
+    gridalpha=0.05,
+    yticks=(0:50:maximum(Ni_all[2])),
+    size=(400, 600),
+    #dpi=300
 )
 
-display(p2)
+for i in 1:length(r_list)
 
-# =========================
-# SAVE JSON
-# =========================
-filename = "JSON/Nd(x)-Nsat.json"
+    Ni_arr = Ni_all[i]
+    x = x_slices[1:length(Ni_arr)] .* 10
 
-results = Dict(
-    "x_pos" => collect(x_pos),
-    "CCE_mean" => CCE_mean,
-    "CCE_std" => CCE_std
-)
-
-if isfile(filename)
-    println("File exists. Overwrite? (y/n)")
-    if lowercase(readline()) != "y"
-        println("Cancelled")
-        return
-    end
+    plot!(
+        p1,
+        x,
+        Ni_arr,
+        #yerr=sqrt.(Ni_arr),
+        label=labels[i],
+        lw=1.5,
+    )
 end
 
-open(filename, "w") do f
-    JSON.print(f, results, 4)
-end
+display(p1)
+savefig(p1, "plot/max_li_volumesize=100r.png")
 
-println("Saved: $filename")=#
+println(sum(Ni_all[1]))
+println(sum(Ni_all[2]))
+println(sum(Ni_all[3]))

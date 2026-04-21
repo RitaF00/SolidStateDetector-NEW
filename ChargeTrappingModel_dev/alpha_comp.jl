@@ -12,7 +12,7 @@ Lx = 0.2
 Ly = 0.2
 Lz = 0.2
 
-dx = 0.0010   # slice per diffusione Li (1 µm)
+dx = 0.0010   # slice per diffusione Li (10 µm)
 FCCD_cm = 0.1
 x_RDR = 0.065 # cm
 
@@ -153,9 +153,9 @@ colors = [:deepskyblue, :royalblue1, :mediumpurple2, :deeppink, :orange]
 # -----------------------------
 # Profondità e parametri simulazione
 # -----------------------------
-x_pos = 0:0.002:0.12
-N_charges = 500
-N_repeat = 25
+x_pos = 0:dx:0.11
+N_charges = 200
+N_repeat = 20
 
 CCE_mean_list = []
 CCE_std_list = []

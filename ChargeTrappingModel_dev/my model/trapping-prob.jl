@@ -14,16 +14,15 @@ Ad ogni passo x, tau viene calcolata --> si calcola poi la prbabilità che la ca
 Qui tau non è mai costante.
 """
 
-
 # -----------------------------
 # Parametri geometrici (cm)
 # -----------------------------
 Lx = 0.2
 Ly = 0.2
 Lz = 0.2
-dx = 0.002   # 20 µm in cm
+dx = 0.002
 FCCD_cm = 0.1
-x_RDR = 0.065  # cm
+x_RDR = 0.065  # 👉 regione senza trapping
 
 # -----------------------------
 # Parametro α
@@ -45,15 +44,15 @@ D_Li = D0 * exp(-H / (R * T_ann))
 # Diffusione carica
 # -----------------------------
 D = 28.9
-Δt = 1.0   # ns
+Δt = 1.0
 Nt = 10000
-T_diff = 90  # K
-σ = sqrt(2 * D * Δt) * 1e-4  # cm
+T_diff = 90
+σ = sqrt(2 * D * Δt) * 1e-4
 
 # -----------------------------
 # Precipitati Li
 # -----------------------------
-r_Li = 0.002  # cm
+r_Li = 0.002
 
 # -----------------------------
 # Lifetime τ(x)
@@ -63,7 +62,7 @@ function τ_hole(x, α)
     m_eff_hole = 0.21 * m0
     kB = 1.38e-23
 
-    v_th = sqrt(3 * kB * T_diff / m_eff_hole) * 100  # cm/s
+    v_th = sqrt(3 * kB * T_diff / m_eff_hole) * 100
     σ_trap = π * r_Li^2
     Nd_val = Ns * erfc(x / (2 * sqrt(D_Li * t_ann)))
 
@@ -72,27 +71,37 @@ end
 
 # -----------------------------
 # Probabilità di trapping locale
-# (modello puro, senza controllo su dx)
+# 👉 CON CONDIZIONE RDR
 # -----------------------------
 function trapping_probability(x, Δt, α)
+
     if x >= x_RDR
-        return 0.0        # Regione attiva: nessun trapping
-    else
-        τ_ns = τ_hole(x, α) * 1e9
-        return 1 - exp(-Δt / τ_ns)
+        return 0.0   # 👉 RDR: nessun trapping
     end
+
+    τ_ns = τ_hole(x, α) * 1e9
+
+    # sicurezza numerica
+    if τ_ns <= 0
+        return 1.0
+    end
+
+    return 1 - exp(-Δt / τ_ns)
 end
 
 # -----------------------------
 # Simulazione diffusione + trapping
 # -----------------------------
 function multiple_charges_trapping_3D(x_charges, N, α)
+
     if isa(x_charges, Number)
         x_charges = fill(x_charges, N)
     end
+
     collected_count = 0
 
     for n in 1:N
+
         x = x_charges[n]
         y = rand() * Ly
         z = rand() * Lz
@@ -102,6 +111,7 @@ function multiple_charges_trapping_3D(x_charges, N, α)
         end
 
         for i in 1:Nt
+
             # Diffusione
             x += σ * randn()
             y += σ * randn()
@@ -114,11 +124,12 @@ function multiple_charges_trapping_3D(x_charges, N, α)
 
             # Probabilità di trapping
             P = trapping_probability(x, Δt, α)
+
             if rand() < P
                 break
             end
 
-            # Raccolta carica
+            # Raccolta
             if x >= FCCD_cm
                 collected_count += 1
                 break
@@ -136,8 +147,9 @@ end
 println("\nSimulazione per α = $α_val")
 
 x_pos = 0:dx:0.11
-N_charges = 1000
+N_charges = 250
 N_repeat = 30
+
 N_matrix = zeros(Int, length(x_pos), N_repeat)
 pbar = Progress(length(x_pos) * N_repeat)
 
@@ -156,57 +168,47 @@ CCE_mean = vec(mean(CCE, dims=2))
 CCE_std = vec(std(CCE, dims=2))
 
 # -----------------------------
-# Probabilità di trapping modellata (solo primo bin = 1)
+# Probabilità di trapping modellata
 # -----------------------------
 P_trap_model = zeros(length(x_pos))
+
 for (i, x) in enumerate(x_pos)
     if i == 1
-        P_trap_model[i] = 1.0        # solo superficie
+        P_trap_model[i] = 1.0
     else
         P_trap_model[i] = trapping_probability(x, Δt, α_val)
     end
 end
 
 # -----------------------------
-# Plot CCE + ribbon + istogramma trapping
+# Plot
 # -----------------------------
 bar_width = dx * 10
 
-plt =# Ribbon errore CCE
-    plot(
-        x_pos .* 10,
-        CCE_mean,
-        ribbon=CCE_std,
-        fillalpha=0.25,
-        color=:orange,
-        label=false
-    )
-
-# Ribbon errore CCE
-plot!(
+plt = plot(
     x_pos .* 10,
     CCE_mean,
     ribbon=CCE_std,
     fillalpha=0.25,
     color=:orange,
-    label=false
+    label="CCE",
+    gridalphan=0.3
 )
 
 plot!(
     x_pos .* 10,
     CCE_mean,
     lw=2,
-    xlim=(0, 1.2),
+    xlim=(0, 1.1),
     ylim=(0, 1.05),
     color=:orange,
     xlabel="Depth (mm)",
     ylabel="Trapping probability / CCE",
-    label="CCE",
+    label="",
     framestyle=:box,
     size=(450, 600)
 )
 
-# Istogramma probabilità di trapping (senza primo bin se vuoi)
 bar!(
     x_pos .* 10,
     P_trap_model,
@@ -217,36 +219,12 @@ bar!(
     label="Trapping Probability"
 )
 
-# Linea FCCD
+# FCCD
 vline!([FCCD_cm * 10], linestyle=:dot, color=:black, label="FCCD")
+
+# 👉 RDR (utile visivamente)
+vline!([x_RDR * 10], linestyle=:dash, color=:grey, label="RDR")
 
 savefig(plt, "plot/CCE_and_trapping_probability_tau(x).png")
 display(plt)
-
-# -----------------------------
-# Salvataggio JSON
-# -----------------------------
-filename = "json-CCE-file/tau(x).json"
-results = Dict(
-    "x_pos" => collect(x_pos),        # range → array
-    "CCE_mean" => CCE_mean,
-    "CCE_std" => CCE_std
-)
-
-if isfile(filename)
-    println("Il file $filename esiste già. Vuoi sovrascriverlo? (y/n)")
-    risposta = readline()
-
-    if lowercase(risposta) != "y"
-        println("Operazione annullata, file non modificato.")
-        return
-    end
-end
-
-# Salvataggio
-open(filename, "w") do f
-    JSON.print(f, results, 4)
-end
-
-println("File JSON salvato: $filename")
 

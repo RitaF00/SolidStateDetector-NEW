@@ -252,7 +252,7 @@ p = scatter(
     gridstyle=:dash,
     gridalpha=0.05,
     frame=:box,
-    yticks=0:5:maximum(Ni_arr * 1.2),)
+    yticks=0:10:maximum(Ni_arr * 1.2), size=(650, 250))
 display(p)
 
 # =====================
@@ -296,7 +296,7 @@ CCE_std = vec(std(CCE_matrix, dims=2))
 # =====================
 # PLOT
 # =====================
-#=
+
 p = plot(x_pos .* 10, CCE_mean,
     ribbon=CCE_std,
     lw=2,
@@ -305,8 +305,7 @@ p = plot(x_pos .* 10, CCE_mean,
     label="CCE",
     frame=:box,
     size=(450, 600)
-)=#
-
+)
 filename = "JSON/Nd(x)-Nsat.json"
 results = Dict(
     "x_pos" => collect(x_pos),        # range → array
@@ -333,3 +332,4 @@ println("File JSON salvato: $filename")
 
 display(p)
 savefig(p, "Mycode_Nd(x)-Nsaturation.png")
+

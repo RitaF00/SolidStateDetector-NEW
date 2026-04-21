@@ -2,34 +2,32 @@ using Random
 using Plots
 using SpecialFunctions
 using Distributions
-using JSON
 using ProgressMeter
-using Statistics
+using Printf
 
 gr()
+
+
+"""
+nel codice utilizzo il modello con 
+- litio 20 μm messo random nel volume 
+- faccio variare α e vedo CCE
+"""
 
 # =====================
 # Li generation
 # =====================
-Ni_arr = Float64[]
+function generate_Li_cells(Lx, Ly, Lz, dx, α, Ns, D_Li, t_ann, x_saturation, Nd_saturation)
 
-function generate_Li_cells(Lx, Ly, Lz, dx, α, Ns, D_Li, t_ann, x_saturation, r_Li)
+    cell_size = 0.002  # cm
 
-    cell_size = r_Li # cm (deve essere >= r_Li)
-    r_eff = 0.002 # raggio di default 
-    nx = floor(Int, Lx / cell_size)
-    ny = floor(Int, Ly / cell_size)
-    nz = floor(Int, Lz / cell_size)
+    nx = Int(Lx / cell_size)
+    ny = Int(Ly / cell_size)
+    nz = Int(Lz / cell_size)
 
     cells = [Vector{NTuple{3,Float64}}() for _ in 1:nx, _ in 1:ny, _ in 1:nz]
 
-
-    # numero di atomi per precipitato
-    correction_factor = (r_eff / r_Li)^3
-    println("correction $correction_factor")
-    Nd_saturation = 1e14
     x_slices = 0:dx:Lx
-
     total_Li = 0
 
     for xi in x_slices
@@ -39,16 +37,13 @@ function generate_Li_cells(Lx, Ly, Lz, dx, α, Ns, D_Li, t_ann, x_saturation, r_
         end
 
         Nd_val = Ns * erfc(xi / (2 * sqrt(D_Li * t_ann)))
+
         effective_Nd = max(Nd_val - Nd_saturation, 0.0)
 
         dV = dx * Ly * Lz
-
-        # numero atteso di precipitati (DIMENSIONALMENTE CORRETTO)
-        λ = α * effective_Nd * dV * correction_factor
+        λ = α * effective_Nd * dV
 
         N_i = rand(Poisson(λ))
-        push!(Ni_arr, N_i)
-
         total_Li += N_i
 
         for _ in 1:N_i
@@ -65,12 +60,12 @@ function generate_Li_cells(Lx, Ly, Lz, dx, α, Ns, D_Li, t_ann, x_saturation, r_
     end
 
     println("Total precipitates = ", total_Li)
-    return cells, nx, ny, nz, cell_size
+    return cells, nx, ny, nz, cell_size, total_Li
 end
 
 
 # =====================
-# Charge transport + trapping
+# Charge transport
 # =====================
 function multiple_charges_trapping_3D(
     x_charges, N, cells, cell_size,
@@ -97,29 +92,24 @@ function multiple_charges_trapping_3D(
 
         for _ in 1:Nt
 
-            # diffusion
             x += σ * randn()
             y += σ * randn()
             z += σ * randn()
 
-            # boundaries
             x = clamp(x, 0, Lx)
             y = clamp(y, 0, Ly)
             z = clamp(z, 0, Lz)
 
-            # collection
             if x >= FCCD_cm
                 collected_count += 1
                 break
             end
 
-            # hard loss
             if x <= dx
                 trapped = true
                 break
             end
 
-            # trapping region
             if x <= x_saturation
 
                 ix = clamp(Int(floor(x / cell_size)) + 1, 1, nx)
@@ -165,19 +155,17 @@ Lx, Ly, Lz = 0.2, 0.2, 0.2
 dx = 0.001
 FCCD_cm = 0.1
 
-# diffusion
 D = 28.9
 Δt = 1.0
 t_max = 10000
 Nt = Int(t_max / Δt)
 σ = sqrt(6 * D * Δt) * 1e-4
 
-# radii to test
-r_Li_values = [0.002, 0.006, 0.012]
+r_Li = 0.002
 
-# annealing
 t_ann = 18 * 60
 T_ann = 623
+
 R = 1.98
 H = 11800
 D0 = 2.5e-3
@@ -185,38 +173,53 @@ D0 = 2.5e-3
 Ns = 10^(21.27 - 2610 / T_ann)
 D_Li = D0 * exp(-H / (R * T_ann))
 
+# 👉 Nd_saturation fissato
 Nd_saturation = 1e14
 
-depth_list = 0:dx:0.11
-Nd(x) = Ns .* erfc.(x ./ (2 * sqrt(D_Li * t_ann)))
-Nd_vals = Nd(depth_list)
-diff_vals = Nd_vals .- Nd_saturation
+# =====================
+# SCAN alpha
+# =====================
+alpha_list = [1e-12, 1.6e-11, 1e-10, 1e-9]
+colors = [:mediumpurple2, :deeppink, :deepskyblue, :orange]
 
+x_pos = 0:dx:0.11
+N_charges = 500
+N_repeat = 50
+
+CCE_all = Dict()
+precip_counts = Dict()
+
+# =====================
+# PRE-COMPUTE saturation depth
+# =====================
+depth_list = 0:dx:0.11
+Nd_vals = Ns .* erfc.(depth_list ./ (2 * sqrt(D_Li * t_ann)))
+
+diff_vals = Nd_vals .- Nd_saturation
 idx = findfirst(i -> diff_vals[i] <= 0, eachindex(diff_vals))
+
+if idx === nothing
+    error("No saturation reached")
+end
+
 saturation_depth = depth_list[idx]
 
 println("Saturation depth = ", saturation_depth * 10, " mm")
 
 # =====================
-# SIMULATION LOOP
+# MAIN LOOP
 # =====================
-x_pos = 0:dx:0.11
-N_charges = 300
-N_repeat = 35
+for (k, α) in enumerate(alpha_list)
 
-results = Dict()
+    println("\nalpha = ", α)
 
-α = 1.6 * 1e-11
+    cells, nx, ny, nz, cell_size, total_Li =
+        generate_Li_cells(
+            Lx, Ly, Lz, dx, α, Ns, D_Li, t_ann,
+            saturation_depth, Nd_saturation
+        )
 
-for r_Li in r_Li_values
-
-    println("\n===== r_Li = $(r_Li*1e4) μm =====")
-
-    global Ni_arr = Float64[]
-
-    cells, nx, ny, nz, cell_size = generate_Li_cells(
-        Lx, Ly, Lz, dx, α, Ns, D_Li, t_ann, saturation_depth, r_Li
-    )
+    precip_counts[α] = total_Li
 
     CCE_matrix = zeros(length(x_pos), N_repeat)
 
@@ -225,7 +228,7 @@ for r_Li in r_Li_values
     for (i, x0) in enumerate(x_pos)
         for j in 1:N_repeat
 
-            collected, _ =
+            collected, trapped =
                 multiple_charges_trapping_3D(
                     x0, N_charges, cells, cell_size,
                     saturation_depth, dx,
@@ -234,32 +237,61 @@ for r_Li in r_Li_values
                     FCCD_cm, r_Li
                 )
 
-            CCE_matrix[i, j] = collected / N_charges
+            CCE_matrix[i, j] = collected
             next!(pbar)
         end
     end
 
-    CCE_mean = vec(mean(CCE_matrix, dims=2))
-    CCE_std = vec(std(CCE_matrix, dims=2))
+    CCE = CCE_matrix ./ N_charges
 
-    results[r_Li] = (CCE_mean, CCE_std)
+    CCE_mean = vec(mean(CCE, dims=2))
+    CCE_std = vec(std(CCE, dims=2))
+
+    CCE_all[α] = (CCE_mean, CCE_std)
 end
 
 
 # =====================
 # PLOT
 # =====================
-p = plot()
+p = plot(
+    xlabel="depth (mm)",
+    ylabel="CCE",
+    frame=:box,
+    dpi=300,
+    size=(450, 600)
+)
 
-for (r_Li, (mean_vals, std_vals)) in results
-    plot!(x_pos .* 10, mean_vals,
-        ribbon=std_vals,
-        label="$(round(r_Li*1e4)) μm",
-        lw=2
-    )
+for (k, α) in enumerate(alpha_list)
+
+    if haskey(CCE_all, α)
+
+        CCE_mean, CCE_std = CCE_all[α]
+        label = @sprintf("α = %.1e", α)
+
+        plot!(
+            p,
+            x_pos .* 10,
+            CCE_mean,
+            lw=2,
+            color=colors[k], label=@sprintf("α = %.1e", α),
+            ribbon=CCE_std,
+            fillalpha=0.25
+        )
+    end
 end
 
-xlabel!("depth (mm)")
-ylabel!("CCE")
 display(p)
-savefig(p, "CCE_vs_rLi_corrected.png")
+savefig(p, "plot/CCE_vs_alpha.png")
+
+
+# =====================
+# PRINT PRECIPITATES
+# =====================
+println("\n============================================================")
+for α in sort(collect(keys(precip_counts)))
+
+    println("alpha = ", α,
+        " → precipitates = ",
+        precip_counts[α])
+end
