@@ -1,4 +1,3 @@
-using Random
 using Plots
 using SpecialFunctions
 using Distributions
@@ -8,7 +7,18 @@ using ProgressMeter
 gr()
 
 # ============================================================
-# STRUCT
+# NOTE FISICHE
+# ============================================================
+"""
+Modello di crescita litio:
+- raggio dipende dalla profondità
+- riempimento con vincolo geometrico + Poisson
+In questo caso volgio idvidere l'RDR in più regioni con diversa dimensione di litio
+in modo da vedere qual è l'effetto di un gradiente di dimensione del litio (e quindi di diffusività) sulla CCE.
+"""
+
+# ============================================================
+# STRUTTURE
 # ============================================================
 struct LiParticle
     x::Float64
@@ -34,16 +44,21 @@ D = 28.9
 Δt = 1.0
 t_max = 10000
 Nt = Int(t_max / Δt)
+
 σ = sqrt(6 * D * Δt) * 1e-4
 
 # ============================================================
-# LITIO
+# TRAPPING
 # ============================================================
-r_Li = 0.002          # 20 μm
-cell_size = r_Li      # come richiesto
+r_Li = 0.002   # 20 μm in cm
 
 # ============================================================
-# ANNEALING
+# PARAMETRO GLOBALE (IMPORTANTE)
+# ============================================================
+n = 6   # <-- fattore di ingrandimento raggio regione RDR
+cell_size = 2 * n * r_Li  #rendiamo cell_size globale
+# ============================================================
+# ANNEALING / MATERIAL PARAMETERS
 # ============================================================
 t_ann = 18 * 60
 T_ann = 623
@@ -70,17 +85,50 @@ saturation_depth = depth_list[idx]
 println("Saturation depth = ", saturation_depth * 10, " mm")
 
 # ============================================================
+# PROFILO RAGGIO
+# ============================================================
+#=
+function r_Li_profile(x)
+    if x <= saturation_depth / 6
+        return 0.012
+    elseif x <= saturation_depth / 3
+        return 0.012
+    elseif x <= saturation_depth / 2
+        return 0.012
+    elseif x <= saturation_depth
+        return 0.012
+    else
+        return 0.002
+    end
+end
+=#
+
+function r_Li_profile(x)
+    if x <= saturation_depth / 2
+        return r_Li
+    else
+        return r_Li
+    end
+end
+
+# ============================================================
 # POISSON TRONCATA
 # ============================================================
+"""
+In questo caso, per evitare di generare un numero di particelle troppo grande in alcune slice,
+ applichiamo una Poisson troncata che limita il numero massimo di particelle a Nmax.
+ dato lambda e Nmax, la funzione prova a generare un numero da Poisson(lambda) fino a 100 volte.
+Se il numero generato è minore o uguale a Nmax, lo restituisce. Altrimenti, dopo 100 tentativi, restituisce Nmax.
+"""
 function truncated_poisson(λ, Nmax)
     if Nmax <= 0
         return 0
     end
 
     for _ in 1:100
-        n = rand(Poisson(λ))
-        if n <= Nmax
-            return n
+        N = rand(Poisson(λ))
+        if N <= Nmax
+            return N
         end
     end
 
@@ -115,18 +163,25 @@ end
 # GENERAZIONE LITIO
 # ============================================================
 function generate_Li()
+    r_Li = 0.002
+    cell_size = 2 * n * r_Li
+    println(cell_size)
 
     nx = floor(Int, Lx / cell_size)
     ny = floor(Int, Ly / cell_size)
     nz = floor(Int, Lz / cell_size)
 
+
     cells = [Vector{LiParticle}() for _ in 1:nx, _ in 1:ny, _ in 1:nz]
 
     x_slices = collect(0:dx:Lx)
 
+    Ni_geom = zeros(Int, length(x_slices))
+    Ni_accept = zeros(Int, length(x_slices))
+
     total = 0
 
-    for xi in x_slices
+    for (i, xi) in enumerate(x_slices)
 
         if xi >= saturation_depth
             continue
@@ -135,21 +190,25 @@ function generate_Li()
         Nd_val = Ns * erfc(xi / (2 * sqrt(D_Li * t_ann)))
         density = α * max(Nd_val - Nd_saturation, 0.0)
 
+        # è il centro dell apoisooniana che poi alcolo in truncated_poisson
         λ = density * dx * Ly * Lz
 
-        # limite geometrico
-        V_particle = (4 / 3) * π * r_Li^3
+        r = r_Li_profile(xi)
+
+        V_particle = (4 / 3) * π * r^3
         V_slice = dx * Ly * Lz
         N_max = Int(floor(V_slice / V_particle))
 
-        N_i = truncated_poisson(λ, N_max)
+        N_target = truncated_poisson(λ, N_max)
 
-        trials = N_i * 3
+        Ni_geom[i] = N_target
+
         accepted = 0
+        trials = N_target * 100
 
         for _ in 1:trials
 
-            if accepted >= N_i
+            if accepted >= N_target
                 break
             end
 
@@ -157,30 +216,38 @@ function generate_Li()
             y = rand() * Ly
             z = rand() * Lz
 
-            if !is_overlapping(x, y, z, r_Li, cells, nx, ny, nz, cell_size)
+            r = r_Li_profile(x)
+
+            if !is_overlapping(x, y, z, r, cells, nx, ny, nz, cell_size)
 
                 ix = clamp(Int(floor(x / cell_size)) + 1, 1, nx)
                 iy = clamp(Int(floor(y / cell_size)) + 1, 1, ny)
                 iz = clamp(Int(floor(z / cell_size)) + 1, 1, nz)
 
-                push!(cells[ix, iy, iz], LiParticle(x, y, z, r_Li))
+                push!(cells[ix, iy, iz], LiParticle(x, y, z, r))
 
                 accepted += 1
                 total += 1
             end
         end
+
+        Ni_accept[i] = accepted
     end
 
-    println("Total Li particles = $total")
-    return cells
+    println("\nTotal accepted particles = $total")
+
+    return cells, Ni_geom, Ni_accept, x_slices
 end
 
-# ============================================================
-# RUN GENERAZIONE
-# ============================================================
-cells = generate_Li()
 
 # ============================================================
+# RUN
+# ============================================================
+cells, Ni_geom, Ni_accept, x_slices = generate_Li()
+
+
+
+
 # TRASPORTO CARICHE
 # ============================================================
 function multiple_charges_trapping_3D(
@@ -267,7 +334,7 @@ end
 # ============================================================
 x_pos = 0:dx:0.11
 N_charges = 50
-N_repeat = 5
+N_repeat = 10
 
 CCE_matrix = zeros(length(x_pos), N_repeat)
 
@@ -276,14 +343,13 @@ pbar = Progress(length(x_pos) * N_repeat)
 for (i, x0) in enumerate(x_pos)
     for j in 1:N_repeat
 
-        collected, _ =
-            multiple_charges_trapping_3D(
-                x0, N_charges, cells,
-                saturation_depth, dx,
-                Lx, Ly, Lz,
-                Nt, σ,
-                FCCD_cm, r_Li
-            )
+        collected, trapped = multiple_charges_trapping_3D(
+            x0, N_charges, cells,
+            saturation_depth, dx,
+            Lx, Ly, Lz,
+            Nt, σ,
+            FCCD_cm, r_Li
+        )
 
         CCE_matrix[i, j] = collected / N_charges
         next!(pbar)
@@ -291,46 +357,125 @@ for (i, x0) in enumerate(x_pos)
 end
 
 # ============================================================
-# STATISTICHE + PLOT
+# STATISTICS
 # ============================================================
 CCE_mean = vec(mean(CCE_matrix, dims=2))
 CCE_std = vec(std(CCE_matrix, dims=2))
 
-p = plot(
-    x_pos .* 10, CCE_mean,
-    ribbon=CCE_std,
-    lw=2,
-    xlabel="depth (mm)",
-    ylabel="CCE",
+# ============================================================
+# PLOT (PAPER STYLE)
+# ============================================================
+xticks_positions = 0:0.1:1.1
+
+p = scatter(
+    x_pos .* 10,
+    CCE_mean,
+    yerror=CCE_std,
+    markersize=3,
     label="CCE",
+    xlabel="Depth (mm)",
+    ylabel="CCE",
     frame=:box,
-    size=(450, 600)
+    xticks=(xticks_positions, string.(round.(xticks_positions, digits=2))),
+    ylim=(0, 1),
+    size=(500, 400),
+    dpi=300
 )
 
 display(p)
 
+# ============================================================
+# JSON SAVE
+# ============================================================
+filename = "JSON/CCE_4_slice.json"
 
-filename = "JSON/CCE_20um.json"
 results = Dict(
-    "x_pos" => collect(x_pos),        # range → array
+    "x_pos" => collect(x_pos),
     "CCE_mean" => CCE_mean,
-    "CCE_std" => CCE_std
+    "CCE_std" => CCE_std,
+    "n_factor" => n,
+    "r_Li_cm" => r_Li,
+    "saturation_depth" => saturation_depth
 )
 
 if isfile(filename)
-    println("Il file $filename esiste già. Vuoi sovrascriverlo? (y/n)")
-    risposta = readline()
-
-    if lowercase(risposta) != "y"
-        println("Operazione annullata, file non modificato.")
+    println("File esiste. Sovrascrivere? (y/n)")
+    ans = readline()
+    if lowercase(ans) != "y"
+        println("Abort.")
         return
     end
 end
 
-# Salvataggio
 open(filename, "w") do f
     JSON.print(f, results, 4)
 end
 
-println("File JSON salvato: $filename")
+println("Salvato: $filename")
 
+
+
+
+#=
+# fattore di scala (da tarare in base al tuo dominio)
+k_size = 1500.0
+
+xs = Float64[]
+ys = Float64[]
+zs = Float64[]
+sizes = Float64[]
+colors = RGB[]
+
+for cell in cells
+    for p in cell
+        push!(xs, p.x * 10)
+        push!(ys, p.y * 10)
+        push!(zs, p.z * 10)
+
+        # dimensione proporzionale al raggio fisico
+        push!(sizes, k_size * p.r)
+
+        # colore sempre legato al raggio normalizzato (ok lasciarlo così)
+        r_norm = p.r / (n * r_Li)
+        push!(colors, RGB(r_norm, 0.2, 1 - r_norm))
+    end
+end
+
+display(p3d)
+
+
+
+
+
+
+p_xy = scatter(xs, ys,
+    markersize=sizes,
+    markercolor=colors,
+    alpha=0.8,
+    legend=false,
+    xlabel="x (mm)",
+    ylabel="y (mm)",
+    title="XY plane"
+)
+
+p_xz = scatter(xs, zs,
+    markersize=sizes,
+    markercolor=colors,
+    alpha=0.8,
+    legend=false,
+    xlabel="x (mm)",
+    ylabel="z (mm)",
+    title="XZ plane"
+)
+
+p_zy = scatter(ys, zs,
+    markersize=sizes,
+    markercolor=colors,
+    alpha=0.8,
+    legend=false,
+    xlabel="y (mm)",
+    ylabel="z (mm)",
+    title="YZ plane"
+)
+
+plot(p_xy, p_xz, p_zy, layout=(1, 3), size=(1200, 400))=#

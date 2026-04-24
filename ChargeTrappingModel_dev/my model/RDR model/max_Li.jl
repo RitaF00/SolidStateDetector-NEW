@@ -66,7 +66,7 @@ function generate_Li_cells(
     x_saturation, r
 )
 
-    cell_size = 0.005  # cm (50 µm)
+    cell_size = r  # cm (50 µm)
 
     nx = Int(Lx / cell_size)
     ny = Int(Ly / cell_size)
@@ -101,7 +101,6 @@ function generate_Li_cells(
         # =========================
         # PARTICLE SIZE
         # =========================
-        #r = r_Li_profile(xi)
         V_li = (4 / 3) * π * r^3
 
         V_slice = dV
@@ -184,64 +183,6 @@ saturation_depth = depth_list[idx]
 
 println("Saturation depth = ", saturation_depth * 10, " mm")
 
-# =========================
-# GENERATE DEFECTS
-# =========================
-
-#=
-α = 1.6e-11
-
-r_list = [0.002, 0.006, 0.012]
-
-Ni_all = []
-labels = []
-for r in r_list
-    println("r = $(r*1e4) μm")
-    global cells, nx, ny, nz, cell_size, Ni_arr
-    cells, nx, ny, nz, cell_size, Ni_arr =
-        generate_Li_cells(Lx, Ly, Lz, dx, α, Ns, D_Li, t_ann, saturation_depth, r)
-
-    push!(Ni_all, Ni_arr)
-    push!(labels, "r = $(round(r*1e4, digits=1)) µm ")
-end
-# =========================
-# PLOT Li distribution
-# =========================
-x_slices = collect(0:dx:Lx)
-x_slices = x_slices[1:length(Ni_arr)]
-
-x_slices = collect(0:dx:Lx)
-
-p1 = plot(
-    xlabel="depth (mm)",
-    ylabel="N Li / slice",
-    frame=:box,
-    gridalpha=0.05,
-    yticks=(0:1:maximum(Ni_all[1])),
-    ylim=[0, 10],
-    size=(400, 600),
-    #dpi=300
-)
-
-for i in 1:length(r_list)
-
-    Ni_arr = Ni_all[i]
-    x = x_slices[1:length(Ni_arr)] .* 10
-
-    plot!(
-        p1,
-        x,
-        Ni_arr,
-        #yerr=sqrt.(Ni_arr),
-        label=labels[i],
-        lw=1.5,
-    )
-end
-
-display(p1)
-savefig(p1, "plot/max_li.png")
-=#
-
 
 """
 produzione dei precipitati utilizzando come volume 100 volte il raggio
@@ -288,7 +229,6 @@ function generate_Li_cells_prop_r_size(dx, α,
         # =========================
         # PARTICLE SIZE
         # =========================
-        #r = r_Li_profile(xi)
         V_li = (4 / 3) * π * r^3
 
         V_slice = dV
