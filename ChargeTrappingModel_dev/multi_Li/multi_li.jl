@@ -13,8 +13,6 @@ gr()
 Modello di crescita litio:
 - raggio dipende dalla profondità
 - riempimento con vincolo geometrico + Poisson
-In questo caso volgio idvidere l'RDR in più regioni con diversa dimensione di litio
-in modo da vedere qual è l'effetto di un gradiente di dimensione del litio (e quindi di diffusività) sulla CCE.
 """
 
 # ============================================================
@@ -55,8 +53,8 @@ r_Li = 0.002   # 20 μm in cm
 # ============================================================
 # PARAMETRO GLOBALE (IMPORTANTE)
 # ============================================================
-n = 6   # <-- fattore di ingrandimento raggio regione RDR
-cell_size = 2 * n * r_Li  #rendiamo cell_size globale
+#n = 1.5  # <-- fattore di ingrandimento raggio regione RDR
+cell_size = 0.024
 # ============================================================
 # ANNEALING / MATERIAL PARAMETERS
 # ============================================================
@@ -87,39 +85,37 @@ println("Saturation depth = ", saturation_depth * 10, " mm")
 # ============================================================
 # PROFILO RAGGIO
 # ============================================================
-#=
-function r_Li_profile(x)
-    if x <= saturation_depth / 6
-        return 0.012
-    elseif x <= saturation_depth / 3
-        return 0.012
-    elseif x <= saturation_depth / 2
-        return 0.012
-    elseif x <= saturation_depth
-        return 0.012
-    else
-        return 0.002
-    end
-end
-=#
 
 function r_Li_profile(x)
-    if x <= saturation_depth / 2
-        return r_Li
+
+    if x <= saturation_depth / 6
+        return 0.012
+
+    elseif x <= 2 * saturation_depth / 6
+        return 0.010
+
+    elseif x <= 3 * saturation_depth / 6
+        return 0.008
+
+    elseif x <= 4 * saturation_depth / 6
+        return 0.006
+
+    elseif x <= 5 * saturation_depth / 6
+        return 0.004
+
+    elseif x <= saturation_depth
+        return 0.002
+
     else
-        return r_Li
+        return 0.0  # fuori dominio
     end
 end
+
+
 
 # ============================================================
 # POISSON TRONCATA
 # ============================================================
-"""
-In questo caso, per evitare di generare un numero di particelle troppo grande in alcune slice,
- applichiamo una Poisson troncata che limita il numero massimo di particelle a Nmax.
- dato lambda e Nmax, la funzione prova a generare un numero da Poisson(lambda) fino a 100 volte.
-Se il numero generato è minore o uguale a Nmax, lo restituisce. Altrimenti, dopo 100 tentativi, restituisce Nmax.
-"""
 function truncated_poisson(λ, Nmax)
     if Nmax <= 0
         return 0
@@ -163,8 +159,7 @@ end
 # GENERAZIONE LITIO
 # ============================================================
 function generate_Li()
-    r_Li = 0.002
-    cell_size = 2 * n * r_Li
+
     println(cell_size)
 
     nx = floor(Int, Lx / cell_size)
@@ -190,10 +185,11 @@ function generate_Li()
         Nd_val = Ns * erfc(xi / (2 * sqrt(D_Li * t_ann)))
         density = α * max(Nd_val - Nd_saturation, 0.0)
 
-        # è il centro dell apoisooniana che poi alcolo in truncated_poisson
         λ = density * dx * Ly * Lz
 
         r = r_Li_profile(xi)
+
+        print(r)
 
         V_particle = (4 / 3) * π * r^3
         V_slice = dx * Ly * Lz
@@ -204,7 +200,7 @@ function generate_Li()
         Ni_geom[i] = N_target
 
         accepted = 0
-        trials = N_target * 100
+        trials = N_target * 3
 
         for _ in 1:trials
 
@@ -253,7 +249,7 @@ cells, Ni_geom, Ni_accept, x_slices = generate_Li()
 function multiple_charges_trapping_3D(
     x_charges, N, cells,
     x_saturation, dx, Lx, Ly, Lz,
-    Nt, σ, FCCD_cm, r
+    Nt, σ, FCCD_cm
 )
 
     if isa(x_charges, Number)
@@ -272,6 +268,9 @@ function multiple_charges_trapping_3D(
         z = rand() * Lz
 
         is_trapped = false
+
+        #r = r_Li_profile(x)
+        #println(r)
 
         for _ in 1:Nt
 
@@ -306,7 +305,7 @@ function multiple_charges_trapping_3D(
                     if 1 ≤ jx ≤ nx && 1 ≤ jy ≤ ny && 1 ≤ jz ≤ nz
 
                         for p in cells[jx, jy, jz]
-                            if (x - p.x)^2 + (y - p.y)^2 + (z - p.z)^2 < r^2
+                            if (x - p.x)^2 + (y - p.y)^2 + (z - p.z)^2 < p.r^2
                                 is_trapped = true
                                 break
                             end
@@ -333,8 +332,9 @@ end
 # SIMULAZIONE CCE
 # ============================================================
 x_pos = 0:dx:0.11
-N_charges = 50
-N_repeat = 10
+N_charges = 200
+N_repeat = 20
+#=
 
 CCE_matrix = zeros(length(x_pos), N_repeat)
 
@@ -348,7 +348,7 @@ for (i, x0) in enumerate(x_pos)
             saturation_depth, dx,
             Lx, Ly, Lz,
             Nt, σ,
-            FCCD_cm, r_Li
+            FCCD_cm
         )
 
         CCE_matrix[i, j] = collected / N_charges
@@ -387,13 +387,12 @@ display(p)
 # ============================================================
 # JSON SAVE
 # ============================================================
-filename = "JSON/CCE_4_slice.json"
-
+filename = "JSON/CCE_6slices.json"
+#filename = "JSON/CCE_prova.json"
 results = Dict(
     "x_pos" => collect(x_pos),
     "CCE_mean" => CCE_mean,
     "CCE_std" => CCE_std,
-    "n_factor" => n,
     "r_Li_cm" => r_Li,
     "saturation_depth" => saturation_depth
 )
@@ -401,7 +400,7 @@ results = Dict(
 if isfile(filename)
     println("File esiste. Sovrascrivere? (y/n)")
     ans = readline()
-    if lowercase(ans) != "y"
+    if ans != "y" && ans != "Y"
         println("Abort.")
         return
     end
@@ -412,70 +411,192 @@ open(filename, "w") do f
 end
 
 println("Salvato: $filename")
+=#
 
 
 
+# ============================================================
+# INTERVALLI GENERALIZZATI
+# ============================================================
+intervals = [
+    (0 / 6, 1 / 6, 0.012, :deepskyblue, 16),
+    (1 / 6, 2 / 6, 0.010, :slateblue, 10 / 0.65),
+    (2 / 6, 3 / 6, 0.008, :indigo, 8 / 0.65),
+    (3 / 6, 4 / 6, 0.006, :purple, 6 / 0.65),
+    (4 / 6, 5 / 6, 0.004, :orange, 4 / 0.65),
+    (5 / 6, 6 / 6, 0.002, :red, 2 / 0.65)
+]
 
-#=
-# fattore di scala (da tarare in base al tuo dominio)
-k_size = 1500.0
+# ============================================================
+# FUNZIONE PROPRIETÀ
+# ============================================================
+function get_properties(x, saturation_depth, intervals)
+    for (a, b, r, color, size) in intervals
+        if a * saturation_depth <= x <= b * saturation_depth
+            return r, color, size
+        end
+    end
+    return 0.0, :black, 1.0
+end
 
-xs = Float64[]
-ys = Float64[]
-zs = Float64[]
-sizes = Float64[]
-colors = RGB[]
+# ============================================================
+# ESTRAZIONE DATI
+# ============================================================
+xs, ys, zs, sizes, colors = Float64[], Float64[], Float64[], Float64[], Any[]
 
 for cell in cells
     for p in cell
-        push!(xs, p.x * 10)
-        push!(ys, p.y * 10)
-        push!(zs, p.z * 10)
+        push!(xs, p.x)
+        push!(ys, p.y)
+        push!(zs, p.z)
 
-        # dimensione proporzionale al raggio fisico
-        push!(sizes, k_size * p.r)
+        _, c, s = get_properties(p.x, saturation_depth, intervals)
 
-        # colore sempre legato al raggio normalizzato (ok lasciarlo così)
-        r_norm = p.r / (n * r_Li)
-        push!(colors, RGB(r_norm, 0.2, 1 - r_norm))
+        push!(sizes, s)
+        push!(colors, c)
     end
+end
+
+# ============================================================
+# 3D PLOT
+# ============================================================
+p3d = scatter3d(xs, ys, zs,
+    markersize=sizes,
+    markercolor=colors,
+    alpha=0.7,
+    xlabel="x",
+    ylabel="y",
+    zlabel="z",
+    legend=false,
+    size=(800, 800),
+    dpi=300
+)
+
+# box
+xv = [0, Lx]
+yv = [0, Ly]
+zv = [0, Lz]
+
+for x in xv, y in yv
+    plot!(p3d, [x, x], [y, y], [0, Lz], linecolor=:black)
+end
+for x in xv, z in zv
+    plot!(p3d, [x, x], [0, Ly], [z, z], linecolor=:black)
+end
+for y in yv, z in zv
+    plot!(p3d, [0, Lx], [y, y], [z, z], linecolor=:black)
 end
 
 display(p3d)
 
+# ============================================================
+# PROIEZIONI 2D
+# ============================================================
 
-
-
-
-
-p_xy = scatter(xs, ys,
+# XY
+p_xy = scatter(
+    xs, ys, frame=:box,
     markersize=sizes,
     markercolor=colors,
-    alpha=0.8,
+    alpha=0.6,
+    xlabel="x",
+    ylabel="y",
+    title="XY projection",
     legend=false,
-    xlabel="x (mm)",
-    ylabel="y (mm)",
-    title="XY plane"
+    size=(600, 600)
 )
 
-p_xz = scatter(xs, zs,
-    markersize=sizes,
+
+# XZ
+p_xz = scatter(
+    xs, zs,
+    markersize=sizes, frame=:box,
     markercolor=colors,
-    alpha=0.8,
+    alpha=0.6,
+    xlabel="x",
+    ylabel="z",
+    title="XZ projection",
     legend=false,
-    xlabel="x (mm)",
-    ylabel="z (mm)",
-    title="XZ plane"
+    size=(600, 600)
 )
 
-p_zy = scatter(ys, zs,
+
+# YZ
+p_yz = scatter(
+    ys, zs,
     markersize=sizes,
-    markercolor=colors,
-    alpha=0.8,
+    markercolor=colors, frame=:box,
+    alpha=0.6,
+    xlabel="y",
+    ylabel="z",
+    title="YZ projection",
     legend=false,
-    xlabel="y (mm)",
-    ylabel="z (mm)",
-    title="YZ plane"
+    size=(600, 600)
+)
+p = plot(p_xy, p_xz, p_yz, layout=(1, 3), dpi=300, size=(2000, 600))
+display(p)
+
+# ============================================================
+# RAGGIO vs PROFONDITÀ
+# ============================================================
+x = collect(0:dx:saturation_depth)
+
+r_vals = [get_properties(xi, saturation_depth, intervals)[1] for xi in x]
+
+p_r = plot(
+    x .* 10,
+    r_vals .* 1e4,
+    lw=2,
+    color=:black,
+    xlabel="Depth (mm)",
+    ylabel="Size (μm)",
+    label="r_Li(x)",
+    frame=:box,
+    size=(600, 400),
+    dpi=300
 )
 
-plot(p_xy, p_xz, p_zy, layout=(1, 3), size=(1200, 400))=#
+# linee intervalli
+for (a, _, _, _, _) in intervals[2:end]
+    vline!(p_r,
+        [a * saturation_depth * 10],
+        ls=:dash,
+        color=:grey,
+        label=""
+    )
+end
+
+display(p_r)
+
+# ============================================================
+# Ni PER SLICE
+# ============================================================
+x_mm = x_slices .* 10
+
+p2 = plot()
+
+for (a, b, _, color, _) in intervals
+    idx = (x_mm .>= a * saturation_depth * 10) .&
+          (x_mm .<= b * saturation_depth * 10)
+
+    plot!(p2,
+        x_mm[idx],
+        Ni_geom[idx],
+        lw=2,
+        color=color, frame=:box,
+        label=""
+    )
+end
+
+xlabel!("x (mm)")
+ylabel!("Li per slice")
+
+vline!(p2,
+    [saturation_depth * 10 / 2],
+    ls=:dash,
+    color=:grey,
+    alpha=0.3,
+    label="RDR/2"
+)
+
+display(p2)

@@ -5,6 +5,12 @@ using Distributions
 using JSON
 using ProgressMeter
 
+
+"""
+In questp codice scelgo quanti Li da 20 μm orodurre fino a RDR/2
+per vedere che effettivamente avere molti R è lo stesso che avere 
+poichi Li più grandi da 120 μm.
+"""
 gr()
 
 # ============================================================
@@ -40,7 +46,7 @@ Nt = Int(t_max / Δt)
 # LITIO
 # ============================================================
 r_Li = 0.002          # 20 μm
-cell_size = r_Li      # come richiesto
+cell_size = 2 * r_Li      # come richiesto
 
 # ============================================================
 # ANNEALING
@@ -56,7 +62,9 @@ Ns = 10^(21.27 - 2610 / T_ann)
 D_Li = D0 * exp(-H / (R * T_ann))
 
 Nd_saturation = 1e14
-α = 4e-10
+α = 1.6e-11
+
+packing = 0.64
 
 # ============================================================
 # SATURATION DEPTH
@@ -77,7 +85,7 @@ function truncated_poisson(λ, Nmax)
         return 0
     end
 
-    for _ in 1:100
+    for _ in 1:50
         n = rand(Poisson(λ))
         if n <= Nmax
             return n
@@ -124,27 +132,37 @@ function generate_Li()
 
     x_slices = collect(0:dx:Lx)
 
+    packing = 0.64
     total = 0
 
-    for xi in x_slices
+    for (i, xi) in enumerate(x_slices)
 
         if xi >= saturation_depth
             continue
         end
 
-        Nd_val = Ns * erfc(xi / (2 * sqrt(D_Li * t_ann)))
-        density = α * max(Nd_val - Nd_saturation, 0.0)
+        fixed_depth = saturation_depth / 2  # cm = 0.35 mm
+        N_120 = [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 1, 3, 1, 3, 3, 2, 3, 2, 1, 0, 2, 3, 3, 1, 1, 3, 3, 3, 3, 1,]
+        N_20 = 6^3 .* N_120
+        #fixed_Li_per_cell = 432
+        #fixed_Li_per_cell = 216
 
-        λ = density * dx * Ly * Lz
-
-        # limite geometrico
         V_particle = (4 / 3) * π * r_Li^3
         V_slice = dx * Ly * Lz
-        N_max = Int(floor(V_slice / V_particle))
+        N_max = Int(floor(packing * V_slice / V_particle))
+        idx = min(i, length(N_20))
 
-        N_i = truncated_poisson(λ, N_max)
+        if xi <= fixed_depth
+            N_i = min(N_20[idx], N_max)
+        else
+            Nd_val = Ns * erfc(xi / (2 * sqrt(D_Li * t_ann)))
+            density = α * max(Nd_val - Nd_saturation, 0.0)
 
-        trials = N_i * 100
+            λ = density * dx * Ly * Lz
+            N_i = truncated_poisson(λ, N_max)
+        end
+
+        trials = N_i * 3
         accepted = 0
 
         for _ in 1:trials
@@ -172,13 +190,98 @@ function generate_Li()
     end
 
     println("Total Li particles = $total")
-    return cells
+    return cells, x_slices
 end
 
 # ============================================================
 # RUN GENERAZIONE
 # ============================================================
-cells = generate_Li()
+cells, x_slices = generate_Li()
+
+# ============================================================
+# FRAZIONE DI VOLUME (MONTE CARLO - VERSIONE ROBUSTA)
+# ============================================================
+function volume_fraction_MC(cells, x_slices, dx, Lx, Ly, Lz; Nsamp=5000)
+
+    nx, ny, nz = size(cells)
+    φ = zeros(length(x_slices))
+
+    for (i, xi) in enumerate(x_slices)
+
+        inside = 0
+
+        for _ in 1:Nsamp
+
+            # punto random nella slice
+            x = xi + rand() * dx
+            y = rand() * Ly
+            z = rand() * Lz
+
+            # cella spaziale
+            ix = clamp(Int(floor(x / cell_size)) + 1, 1, nx)
+            iy = clamp(Int(floor(y / cell_size)) + 1, 1, ny)
+            iz = clamp(Int(floor(z / cell_size)) + 1, 1, nz)
+
+            found = false
+
+            # controlla celle vicine
+            for dxi in -1:1, dyi in -1:1, dzi in -1:1
+
+                jx, jy, jz = ix + dxi, iy + dyi, iz + dzi
+
+                if 1 ≤ jx ≤ nx && 1 ≤ jy ≤ ny && 1 ≤ jz ≤ nz
+                    for p in cells[jx, jy, jz]
+
+                        if (x - p.x)^2 + (y - p.y)^2 + (z - p.z)^2 < p.r^2
+                            inside += 1
+                            found = true
+                            break
+                        end
+                    end
+                end
+
+                if found
+                    break
+                end
+            end
+        end
+
+        φ[i] = inside / Nsamp
+    end
+
+    return φ
+end
+
+# ============================================================
+# CALCOLO FRAZIONE DI VOLUME (MC)
+# ============================================================
+φ = volume_fraction_MC(cells, x_slices, dx, Lx, Ly, Lz, Nsamp=5000)
+
+x_mm = x_slices .* 10
+x_split = saturation_depth * 10 / 2
+
+pφ = plot(
+    x_mm, 100 .* φ,   # 👉 percentuale
+    xlim=[0, 0.7],
+    lw=2,
+    color=:purple,
+    xlabel="Depth (mm)",
+    ylabel="Occupied volume (%)",
+    label="φ %",
+    frame=:box,
+    size=(800, 500)
+)
+
+vline!(pφ, [x_split],
+    ls=:dash,
+    color=:black,
+    label="RDR boundary"
+)
+
+display(pφ)
+
+
+#=
 
 # ============================================================
 # TRASPORTO CARICHE
@@ -266,8 +369,8 @@ end
 # SIMULAZIONE CCE
 # ============================================================
 x_pos = 0:dx:0.11
-N_charges = 250
-N_repeat = 25
+N_charges = 150
+N_repeat = 15
 
 CCE_matrix = zeros(length(x_pos), N_repeat)
 
@@ -310,7 +413,7 @@ p = plot(
 display(p)
 
 
-filename = "JSON/CCE_20um.json"
+filename = "CCE_20um_comaprison_with120um_1perslice.json"
 results = Dict(
     "x_pos" => collect(x_pos),        # range → array
     "CCE_mean" => CCE_mean,
@@ -334,3 +437,4 @@ end
 
 println("File JSON salvato: $filename")
 
+=#

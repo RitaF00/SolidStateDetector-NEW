@@ -13,6 +13,15 @@ gr()
 Modello di crescita litio:
 - raggio dipende dalla profondità
 - riempimento con vincolo geometrico + Poisson
+Si inserisceil numero massimo di litio che può essere geenrato tramite
+un packing factor stimato essere 0.64 in 3D
+[file:///C:/Users/rirri/Downloads/PhysRevA.27.1053.pdf]
+
+In questo codice vi sono anche i plot:
+ù- numero massimo di litio permesso geometricamente e quello effettivamente richiesto
+- distribuzione 3D dei precipitati
+- distribuzione del raggio in funzione della profondità
+- plot della frazione del voluumem occupato considerando che alcuni precipitati sono più grandi di altri (quindi non è detto che 1000 Li da 20 μm siano equivalenti a 1 Li da 120 μm)
 """
 
 # ============================================================
@@ -53,7 +62,7 @@ r_Li = 0.002   # 20 μm in cm
 # ============================================================
 # PARAMETRO GLOBALE (IMPORTANTE)
 # ============================================================
-n = 1.5  # <-- fattore di ingrandimento raggio regione RDR
+n = 6 # <-- fattore di ingrandimento raggio regione RDR
 cell_size = 2 * n * r_Li  #rendiamo cell_size globale
 # ============================================================
 # ANNEALING / MATERIAL PARAMETERS
@@ -86,7 +95,6 @@ println("Saturation depth = ", saturation_depth * 10, " mm")
 # PROFILO RAGGIO
 # ============================================================
 function r_Li_profile(x)
-    #return x <= saturation_depth / 2 ? n * r_Li : r_Li
     return x <= saturation_depth / 2 ? n * r_Li : r_Li
 end
 
@@ -98,7 +106,7 @@ function truncated_poisson(λ, Nmax)
         return 0
     end
 
-    for _ in 1:100
+    for _ in 1:50
         N = rand(Poisson(λ))
         if N <= Nmax
             return N
@@ -151,6 +159,7 @@ function generate_Li()
     Ni_geom = zeros(Int, length(x_slices))
     Ni_accept = zeros(Int, length(x_slices))
 
+    packing = 0.64
     total = 0
 
     for (i, xi) in enumerate(x_slices)
@@ -170,14 +179,14 @@ function generate_Li()
 
         V_particle = (4 / 3) * π * r^3
         V_slice = dx * Ly * Lz
-        N_max = Int(floor(V_slice / V_particle))
+        N_max = Int(floor(packing * V_slice / V_particle))
 
         N_target = truncated_poisson(λ, N_max)
 
         Ni_geom[i] = N_target
 
         accepted = 0
-        trials = N_target * 100
+        trials = max(20 * N_target, 50)
 
         for _ in 1:trials
 
@@ -218,7 +227,136 @@ end
 # ============================================================
 cells, Ni_geom, Ni_accept, x_slices = generate_Li()
 
+# ============================================================
+# STATISTICHE
+# ============================================================
+println("\n=== STATISTICHE ===")
+println("Media richiesti = ", mean(Ni_geom))
+println("Media accettati = ", mean(Ni_accept))
+println("Efficienza media = ", mean(Ni_accept ./ max.(Ni_geom, 1)))
 
+x_mm = x_slices .* 10
+x_split = saturation_depth * 10 / 2
+yticks_positions = 0:floor(Int, maximum(Ni_geom) / 5):maximum(Ni_geom)
+xticks_positions = 0:0.01:0.7
+
+
+p = plot()
+
+# richiesti
+plot!(p,
+    x_mm, Ni_geom,
+    xlim=[0, 0.7],
+    lw=3,
+    yticks=yticks_positions,
+    xticks=xticks_positions,
+    color=:black,
+    gridalpha=0.2,
+    label="Requested (Poisson + geom)"
+)
+
+# accettati
+plot!(p,
+    x_mm, Ni_accept,
+    lw=2,
+    ls=:dash,
+    color=:orange,
+    label="Accepted (no overlap)"
+)
+
+xlabel!("Depth (mm)")
+ylabel!("Li precipitates per slice")
+
+vline!(p, [x_split],
+    ls=:dash,
+    color=:blue,
+    label="RDR boundary"
+)
+
+plot!(p,
+    frame=:box,
+    size=(800, 500),
+    legend=:topleft,
+    legendfontsize=10
+)
+
+display(p)
+
+
+function volume_fraction_MC(cells, x_slices, dx, Lx, Ly, Lz; Nsamp=2000)
+
+    nx, ny, nz = size(cells)
+
+    φ = zeros(length(x_slices))
+
+    V_slice = dx * Ly * Lz
+
+    for (i, xi) in enumerate(x_slices)
+
+        inside = 0
+
+        for _ in 1:Nsamp
+
+            # punto random nella slice
+            x = xi + rand() * dx
+            y = rand() * Ly
+            z = rand() * Lz
+
+            # trova cella
+            ix = clamp(Int(floor(x / cell_size)) + 1, 1, nx)
+            iy = clamp(Int(floor(y / cell_size)) + 1, 1, ny)
+            iz = clamp(Int(floor(z / cell_size)) + 1, 1, nz)
+
+            found = false
+
+            for dxi in -1:1, dyi in -1:1, dzi in -1:1
+                jx, jy, jz = ix + dxi, iy + dyi, iz + dzi
+
+                if 1 ≤ jx ≤ nx && 1 ≤ jy ≤ ny && 1 ≤ jz ≤ nz
+                    for p in cells[jx, jy, jz]
+
+                        if (x - p.x)^2 + (y - p.y)^2 + (z - p.z)^2 < p.r^2
+                            inside += 1
+                            found = true
+                            break
+                        end
+                    end
+                end
+
+                if found
+                    break
+                end
+            end
+        end
+
+        φ[i] = inside / Nsamp
+    end
+
+    return φ
+end
+φ = volume_fraction_MC(cells, x_slices, dx, Lx, Ly, Lz, Nsamp=3000)
+x_mm = x_slices .* 10
+x_split = saturation_depth * 10 / 2
+
+pφ = plot(
+    x_mm, φ .* 100,
+    xlim=[0, 0.7],
+    lw=2,
+    color=:purple,
+    xlabel="Depth (mm)",
+    ylabel="Volume fraction",
+    label="φ %",
+    frame=:box,
+    size=(800, 500)
+)
+
+vline!(pφ, [x_split],
+    ls=:dash,
+    color=:black,
+    label="RDR boundary"
+)
+
+display(pφ)
 
 
 # TRASPORTO CARICHE
@@ -309,8 +447,11 @@ end
 # SIMULAZIONE CCE
 # ============================================================
 x_pos = 0:dx:0.11
-N_charges = 200
-N_repeat = 20
+N_charges = 150
+N_repeat = 15
+
+
+
 
 CCE_matrix = zeros(length(x_pos), N_repeat)
 
@@ -363,7 +504,7 @@ display(p)
 # ============================================================
 # JSON SAVE
 # ============================================================
-filename = "JSON-multi-size/CCE_$(n*r_Li*1e4)um_20um.json"
+filename = "JSON-packing/CCE_$(n*r_Li*1e4)um_20um.json"
 #filename = "JSON/CCE_prova.json"
 results = Dict(
     "x_pos" => collect(x_pos),
@@ -373,6 +514,8 @@ results = Dict(
     "r_Li_cm" => r_Li,
     "saturation_depth" => saturation_depth
 )
+
+mkpath(dirname(filename))
 
 if isfile(filename)
     println("File esiste. Sovrascrivere? (y/n)")
@@ -389,9 +532,9 @@ end
 
 println("Salvato: $filename")
 
-
-
 #=
+
+
 # ============================================================
 # RADIUS vs DEPTH PLOT
 # ============================================================
