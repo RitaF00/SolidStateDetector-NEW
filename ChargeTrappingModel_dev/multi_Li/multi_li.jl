@@ -13,6 +13,15 @@ gr()
 Modello di crescita litio:
 - raggio dipende dalla profondità
 - riempimento con vincolo geometrico + Poisson
+Si inserisceil numero massimo di litio che può essere geenrato tramite
+un packing factor stimato essere 0.64 in 3D
+[file:///C:/Users/rirri/Downloads/PhysRevA.27.1053.pdf]
+
+In questo codice vi sono anche i plot:
+- numero massimo di litio permesso geometricamente e quello effettivamente richiesto
+- distribuzione 3D dei precipitati
+- distribuzione del raggio in funzione della profondità
+- plot della frazione del voluumem occupato considerando che alcuni precipitati sono più grandi di altri (quindi non è detto che 1000 Li da 20 μm siano equivalenti a 1 Li da 120 μm)
 """
 
 # ============================================================
@@ -53,8 +62,8 @@ r_Li = 0.002   # 20 μm in cm
 # ============================================================
 # PARAMETRO GLOBALE (IMPORTANTE)
 # ============================================================
-#n = 1.5  # <-- fattore di ingrandimento raggio regione RDR
-cell_size = 0.024
+n = 6 # <-- fattore di ingrandimento raggio regione RDR
+cell_size = 2 * n * r_Li  #rendiamo cell_size globale
 # ============================================================
 # ANNEALING / MATERIAL PARAMETERS
 # ============================================================
@@ -85,7 +94,6 @@ println("Saturation depth = ", saturation_depth * 10, " mm")
 # ============================================================
 # PROFILO RAGGIO
 # ============================================================
-
 function r_Li_profile(x)
 
     if x <= saturation_depth / 6
@@ -110,9 +118,6 @@ function r_Li_profile(x)
         return 0.0  # fuori dominio
     end
 end
-
-
-
 # ============================================================
 # POISSON TRONCATA
 # ============================================================
@@ -121,7 +126,7 @@ function truncated_poisson(λ, Nmax)
         return 0
     end
 
-    for _ in 1:100
+    for _ in 1:50
         N = rand(Poisson(λ))
         if N <= Nmax
             return N
@@ -174,6 +179,7 @@ function generate_Li()
     Ni_geom = zeros(Int, length(x_slices))
     Ni_accept = zeros(Int, length(x_slices))
 
+    packing = 0.64
     total = 0
 
     for (i, xi) in enumerate(x_slices)
@@ -193,14 +199,14 @@ function generate_Li()
 
         V_particle = (4 / 3) * π * r^3
         V_slice = dx * Ly * Lz
-        N_max = Int(floor(V_slice / V_particle))
+        N_max = Int(floor(packing * V_slice / V_particle))
 
         N_target = truncated_poisson(λ, N_max)
 
         Ni_geom[i] = N_target
 
         accepted = 0
-        trials = N_target * 3
+        trials = max(20 * N_target, 50)
 
         for _ in 1:trials
 
@@ -241,8 +247,143 @@ end
 # ============================================================
 cells, Ni_geom, Ni_accept, x_slices = generate_Li()
 
+# ============================================================
+# STATISTICHE
+# ============================================================
+println("\n=== STATISTICHE ===")
+println("Media richiesti = ", mean(Ni_geom))
+println("Media accettati = ", mean(Ni_accept))
+println("Efficienza media = ", mean(Ni_accept ./ max.(Ni_geom, 1)))
+
+x_mm = x_slices .* 10
+x_split = saturation_depth * 10 / 2
+yticks_positions = 0:floor(Int, maximum(Ni_geom) / 7):maximum(Ni_geom)
+xticks_positions = 0:0.05:0.7
 
 
+p = plot()
+
+# richiesti
+plot!(p,
+    x_mm, Ni_geom,
+    xlim=[0, 0.7],
+    lw=3,
+    yticks=yticks_positions,
+    xticks=xticks_positions,
+    color=:black,
+    gridalpha=0.2,
+    label="Requested (Poisson + geom)"
+)
+
+# accettati
+plot!(p,
+    x_mm, Ni_accept,
+    lw=2,
+    ls=:dash,
+    color=:orange,
+    label="Accepted (no overlap)"
+)
+
+xlabel!("Depth (mm)")
+ylabel!("Li precipitates per slice")
+
+vline!(p, [x_split],
+    ls=:dash,
+    color=:blue,
+    label="RDR boundary"
+)
+
+plot!(p,
+    frame=:box,
+    size=(800, 500),
+    legend=:topleft,
+    legendfontsize=10
+)
+
+display(p)
+savefig(p, "plot/Li_per_slice.png")
+
+
+
+function volume_fraction_MC(cells, x_slices, dx, Lx, Ly, Lz; Nsamp=2000)
+
+    nx, ny, nz = size(cells)
+
+    φ = zeros(length(x_slices))
+
+    V_slice = dx * Ly * Lz
+
+    for (i, xi) in enumerate(x_slices)
+
+        inside = 0
+
+        for _ in 1:Nsamp
+
+            # punto random nella slice
+            x = xi + rand() * dx
+            y = rand() * Ly
+            z = rand() * Lz
+
+            # trova cella
+            ix = clamp(Int(floor(x / cell_size)) + 1, 1, nx)
+            iy = clamp(Int(floor(y / cell_size)) + 1, 1, ny)
+            iz = clamp(Int(floor(z / cell_size)) + 1, 1, nz)
+
+            found = false
+
+            for dxi in -1:1, dyi in -1:1, dzi in -1:1
+                jx, jy, jz = ix + dxi, iy + dyi, iz + dzi
+
+                if 1 ≤ jx ≤ nx && 1 ≤ jy ≤ ny && 1 ≤ jz ≤ nz
+                    for p in cells[jx, jy, jz]
+
+                        if (x - p.x)^2 + (y - p.y)^2 + (z - p.z)^2 < p.r^2
+                            inside += 1
+                            found = true
+                            break
+                        end
+                    end
+                end
+
+                if found
+                    break
+                end
+            end
+        end
+
+        φ[i] = inside / Nsamp
+    end
+
+    return φ
+end
+φ = volume_fraction_MC(cells, x_slices, dx, Lx, Ly, Lz, Nsamp=3000)
+x_mm = x_slices .* 10
+x_split = saturation_depth * 10 / 2
+
+xticks_positions = 0:0.05:0.7
+yticks_positions = 0:5:100
+pφ = plot(
+    x_mm, φ .* 100,
+    xlim=[0, 0.7],
+    lw=2,
+    color=:purple,
+    yticks=yticks_positions,
+    xticks=xticks_positions,
+    xlabel="Depth (mm)",
+    ylabel="Volume fraction",
+    label="φ %",
+    frame=:box,
+    size=(800, 500)
+)
+
+vline!(pφ, [x_split],
+    ls=:dash,
+    color=:black,
+    label="RDR boundary"
+)
+
+display(pφ)
+savefig(pφ, "plot/fraction_volume.png")
 
 # TRASPORTO CARICHE
 # ============================================================
@@ -332,9 +473,11 @@ end
 # SIMULAZIONE CCE
 # ============================================================
 x_pos = 0:dx:0.11
-N_charges = 200
-N_repeat = 20
-#=
+N_charges = 300
+N_repeat = 30
+
+
+
 
 CCE_matrix = zeros(length(x_pos), N_repeat)
 
@@ -367,7 +510,7 @@ CCE_std = vec(std(CCE_matrix, dims=2))
 # ============================================================
 xticks_positions = 0:0.1:1.1
 
-p = scatter(
+pCCE = scatter(
     x_pos .* 10,
     CCE_mean,
     yerror=CCE_std,
@@ -382,20 +525,23 @@ p = scatter(
     dpi=300
 )
 
-display(p)
-
+display(pCCE)
+savefig(pCCE, "plot/CCE_6slices.png")
 # ============================================================
 # JSON SAVE
 # ============================================================
-filename = "JSON/CCE_6slices.json"
-#filename = "JSON/CCE_prova.json"
+filename = "JSON-packing/CCE_6slices.json"
+
 results = Dict(
     "x_pos" => collect(x_pos),
     "CCE_mean" => CCE_mean,
     "CCE_std" => CCE_std,
+    "n_factor" => n,
     "r_Li_cm" => r_Li,
     "saturation_depth" => saturation_depth
 )
+
+mkpath(dirname(filename))
 
 if isfile(filename)
     println("File esiste. Sovrascrivere? (y/n)")
@@ -411,7 +557,7 @@ open(filename, "w") do f
 end
 
 println("Salvato: $filename")
-=#
+
 
 
 
@@ -438,6 +584,7 @@ function get_properties(x, saturation_depth, intervals)
     end
     return 0.0, :black, 1.0
 end
+#=
 
 # ============================================================
 # ESTRAZIONE DATI
@@ -450,9 +597,11 @@ for cell in cells
         push!(ys, p.y)
         push!(zs, p.z)
 
-        _, c, s = get_properties(p.x, saturation_depth, intervals)
+        r, c, _ = get_properties(p.x, saturation_depth, intervals)
 
-        push!(sizes, s)
+        scale = 15  # tuning visivo (10–20 tipico)
+
+        push!(sizes, (r / 0.012)^(2 / 3) * scale)
         push!(colors, c)
     end
 end
@@ -469,7 +618,10 @@ p3d = scatter3d(xs, ys, zs,
     zlabel="z",
     legend=false,
     size=(800, 800),
-    dpi=300
+    dpi=300,
+    xlims=(0, Lx),
+    ylims=(0, Ly),
+    zlims=(0, Lz),
 )
 
 # box
@@ -502,7 +654,9 @@ p_xy = scatter(
     xlabel="x",
     ylabel="y",
     title="XY projection",
-    legend=false,
+    legend=false, xlims=(0, Lx),
+    ylims=(0, Ly),
+    zlims=(0, Lz),
     size=(600, 600)
 )
 
@@ -516,7 +670,9 @@ p_xz = scatter(
     xlabel="x",
     ylabel="z",
     title="XZ projection",
-    legend=false,
+    legend=false, xlims=(0, Lx),
+    ylims=(0, Ly),
+    zlims=(0, Lz),
     size=(600, 600)
 )
 
@@ -530,24 +686,29 @@ p_yz = scatter(
     xlabel="y",
     ylabel="z",
     title="YZ projection",
-    legend=false,
+    legend=false, xlims=(0, Lx),
+    ylims=(0, Ly),
+    zlims=(0, Lz),
     size=(600, 600)
 )
 p = plot(p_xy, p_xz, p_yz, layout=(1, 3), dpi=300, size=(2000, 600))
 display(p)
-
+=#
 # ============================================================
 # RAGGIO vs PROFONDITÀ
 # ============================================================
 x = collect(0:dx:saturation_depth)
 
 r_vals = [get_properties(xi, saturation_depth, intervals)[1] for xi in x]
-
+yticks_positions = 0:10:120
+xticks_positions = 0:0.05:0.7
 p_r = plot(
     x .* 10,
     r_vals .* 1e4,
     lw=2,
     color=:black,
+    yticks=yticks_positions,
+    xticks=xticks_positions,
     xlabel="Depth (mm)",
     ylabel="Size (μm)",
     label="r_Li(x)",
@@ -567,12 +728,14 @@ for (a, _, _, _, _) in intervals[2:end]
 end
 
 display(p_r)
+savefig(p_r, "plot/radius_profile.png")
 
 # ============================================================
 # Ni PER SLICE
 # ============================================================
 x_mm = x_slices .* 10
-
+yticks_positions = 0:floor(Int, maximum(Ni_geom) / 7):maximum(Ni_geom)
+xticks_positions = 0:0.05:0.7
 p2 = plot()
 
 for (a, b, _, color, _) in intervals
@@ -582,21 +745,26 @@ for (a, b, _, color, _) in intervals
     plot!(p2,
         x_mm[idx],
         Ni_geom[idx],
+        yticks=yticks_positions,
+        xticks=xticks_positions,
         lw=2,
         color=color, frame=:box,
-        label=""
+        label="",
+        xlimits=(0, 0.7),
     )
 end
 
 xlabel!("x (mm)")
 ylabel!("Li per slice")
 
-vline!(p2,
-    [saturation_depth * 10 / 2],
-    ls=:dash,
-    color=:grey,
-    alpha=0.3,
-    label="RDR/2"
-)
+for (a, _, _, _, _) in intervals[2:end]
+    vline!(p2,
+        [a * saturation_depth * 10],
+        ls=:dash,
+        color=:grey,
+        label=""
+    )
+end
 
 display(p2)
+savefig(p2, "plot/Li_per_slice_intervals.png")

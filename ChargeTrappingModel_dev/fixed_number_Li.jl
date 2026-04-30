@@ -120,8 +120,9 @@ function is_overlapping(x, y, z, r, cells, nx, ny, nz, cell_size)
 end
 
 # ============================================================
-# GENERAZIONE LITIO
+# GENERAZIONE LITIO con agglomerati di 20 μm fino a RDR/2
 # ============================================================
+
 function generate_Li()
 
     nx = floor(Int, Lx / cell_size)
@@ -132,8 +133,9 @@ function generate_Li()
 
     x_slices = collect(0:dx:Lx)
 
-    packing = 0.64
     total = 0
+
+    N_120 = [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 1, 3, 1, 3, 3, 2, 3, 2, 1, 0, 2, 3, 3, 1, 1, 3, 3, 3, 3, 1]
 
     for (i, xi) in enumerate(x_slices)
 
@@ -141,26 +143,99 @@ function generate_Li()
             continue
         end
 
-        fixed_depth = saturation_depth / 2  # cm = 0.35 mm
-        N_120 = [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 1, 3, 1, 3, 3, 2, 3, 2, 1, 0, 2, 3, 3, 1, 1, 3, 3, 3, 3, 1,]
-        N_20 = 6^3 .* N_120
-        #fixed_Li_per_cell = 432
-        #fixed_Li_per_cell = 216
+        fixed_depth = saturation_depth / 2
+        idx = min(i, length(N_120))
 
         V_particle = (4 / 3) * π * r_Li^3
         V_slice = dx * Ly * Lz
         N_max = Int(floor(packing * V_slice / V_particle))
-        idx = min(i, length(N_20))
 
+        # ============================================================
+        # 🔴 REGIONE CLUSTER (equivalente 120 µm)
+        # ============================================================
         if xi <= fixed_depth
-            N_i = min(N_20[idx], N_max)
+
+            N_clusters = N_120[idx]
+            N_per_cluster = 6^3
+            N_i = N_clusters * N_per_cluster
+
+            R_cluster = 1.2 * 0.012   # 120 µm = 0.012 cm
+
+            for _ in 1:N_clusters
+
+                x0 = xi + rand() * dx
+                y0 = rand() * Ly
+                z0 = rand() * Lz
+
+                for _ in 1:N_per_cluster
+
+                    # punto random uniforme nella sfera
+                    u = rand()
+                    θ = 2π * rand()
+                    φ = acos(2rand() - 1)
+
+                    r = R_cluster * cbrt(u)
+
+                    x = x0 + r * sin(φ) * cos(θ)
+                    y = y0 + r * sin(φ) * sin(θ)
+                    z = z0 + r * cos(φ)
+
+                    x = clamp(x, 0, Lx)
+                    y = clamp(y, 0, Ly)
+                    z = clamp(z, 0, Lz)
+
+                    # 🔴 NIENTE overlap check qui
+                    ix = clamp(Int(floor(x / cell_size)) + 1, 1, nx)
+                    iy = clamp(Int(floor(y / cell_size)) + 1, 1, ny)
+                    iz = clamp(Int(floor(z / cell_size)) + 1, 1, nz)
+
+                    push!(cells[ix, iy, iz], LiParticle(x, y, z, r_Li))
+                    total += 1
+                end
+            end
+
+
         else
             Nd_val = Ns * erfc(xi / (2 * sqrt(D_Li * t_ann)))
             density = α * max(Nd_val - Nd_saturation, 0.0)
 
             λ = density * dx * Ly * Lz
             N_i = truncated_poisson(λ, N_max)
+
+            trials = N_i * 3
+            accepted = 0
+
+            for _ in 1:trials
+                if accepted >= N_i
+                    break
+                end
+
+                x = xi + rand() * dx
+                y = rand() * Ly
+                z = rand() * Lz
+
+                if !is_overlapping(x, y, z, r_Li, cells, nx, ny, nz, cell_size)
+
+                    ix = clamp(Int(floor(x / cell_size)) + 1, 1, nx)
+                    iy = clamp(Int(floor(y / cell_size)) + 1, 1, ny)
+                    iz = clamp(Int(floor(z / cell_size)) + 1, 1, nz)
+
+                    push!(cells[ix, iy, iz], LiParticle(x, y, z, r_Li))
+
+                    accepted += 1
+                    total += 1
+                end
+            end
         end
+
+        # ============================================================
+        # 🔵 REGIONE PROFONDA (Poisson come prima)
+        # ============================================================
+        Nd_val = Ns * erfc(xi / (2 * sqrt(D_Li * t_ann)))
+        density = α * max(Nd_val - Nd_saturation, 0.0)
+
+        λ = density * dx * Ly * Lz
+        N_i = truncated_poisson(λ, N_max)
 
         trials = N_i * 3
         accepted = 0
@@ -192,6 +267,66 @@ function generate_Li()
     println("Total Li particles = $total")
     return cells, x_slices
 end
+
+#=
+# Litio con distirbuzione uniforme defgli agglmerati di litio d 20 μm
+function generate_Li()
+    nx = floor(Int, Lx / cell_size)
+    ny = floor(Int, Ly / cell_size)
+    nz = floor(Int, Lz / cell_size)
+    cells = [Vector{LiParticle}() for _ in 1:nx, _ in 1:ny, _ in 1:nz]
+
+    x_slices = collect(0:dx:Lx)
+    packing = 0.64
+    total = 0
+
+    for (i, xi) in enumerate(x_slices)
+        if xi >= saturation_depth
+            continue
+        end
+        fixed_depth = saturation_depth / 2 # cm = 0.35 mm 
+        N_120 = [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 1, 3, 1, 3, 3, 2, 3, 2, 1, 0, 2, 3, 3, 1, 1, 3, 3, 3, 3, 1,]
+        N_20 = 6^3 .* N_120
+
+
+
+        V_particle = (4 / 3) * π * r_Li^3
+        V_slice = dx * Ly * Lz
+        N_max = Int(floor(packing * V_slice / V_particle))
+        idx = min(i, length(N_20))
+        if xi <= fixed_depth
+            N_i = min(N_20[idx], N_max)
+        else
+            Nd_val = Ns * erfc(xi / (2 * sqrt(D_Li * t_ann)))
+            density = α * max(Nd_val - Nd_saturation, 0.0)
+            λ = density * dx * Ly * Lz
+            N_i = truncated_poisson(λ, N_max)
+        end
+        trials = N_i * 3
+        accepted = 0
+        for _ in 1:trials
+            if accepted >= N_i
+                break
+            end
+            x = xi + rand() * dx
+            y = rand() * Ly
+            z = rand() * Lz
+            if !is_overlapping(x, y, z, r_Li, cells, nx, ny, nz, cell_size)
+                ix = clamp(Int(floor(x / cell_size)) + 1, 1, nx)
+                iy = clamp(Int(floor(y / cell_size)) + 1, 1, ny)
+                iz = clamp(Int(floor(z / cell_size)) + 1, 1, nz)
+                push!(cells[ix, iy, iz], LiParticle(x, y, z, r_Li))
+                accepted += 1
+                total += 1
+            end
+        end
+    end
+    println("Total Li particles = $total")
+    return cells, x_slices
+end
+
+=#
+
 
 # ============================================================
 # RUN GENERAZIONE
@@ -280,8 +415,41 @@ vline!(pφ, [x_split],
 
 display(pφ)
 
+function plot_clusters_3D(cells; max_points=10000)
 
-#=
+    all_particles = LiParticle[]
+
+    for cell in cells
+        append!(all_particles, cell)
+    end
+
+    # 🔴 sampling casuale
+    N = min(length(all_particles), max_points)
+    idxs = rand(1:length(all_particles), N)
+
+    xs = [all_particles[i].x for i in idxs]
+    ys = [all_particles[i].y for i in idxs]
+    zs = [all_particles[i].z for i in idxs]
+
+    p = scatter3d(
+        xs .* 10, ys .* 10, zs .* 10,
+        markersize=1,
+        alpha=0.6,
+        xlabel="x",
+        ylabel="y",
+        zlabel="z",
+        title="Li clusters (20 μm)",
+        xlim=(0, 2),
+        ylim=(0, 2),
+        zlim=(0, 2),
+        camera=(45, 30),
+        legend=false
+    )
+
+    return p
+end
+p = plot_clusters_3D(cells)
+display(p)
 
 # ============================================================
 # TRASPORTO CARICHE
@@ -369,8 +537,8 @@ end
 # SIMULAZIONE CCE
 # ============================================================
 x_pos = 0:dx:0.11
-N_charges = 150
-N_repeat = 15
+N_charges = 300
+N_repeat = 30
 
 CCE_matrix = zeros(length(x_pos), N_repeat)
 
@@ -413,6 +581,7 @@ p = plot(
 display(p)
 
 
+#filename = "CCE_20um_comaprison_with120um_cluster.json"
 filename = "CCE_20um_comaprison_with120um_1perslice.json"
 results = Dict(
     "x_pos" => collect(x_pos),        # range → array
@@ -437,4 +606,3 @@ end
 
 println("File JSON salvato: $filename")
 
-=#

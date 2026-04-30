@@ -447,8 +447,8 @@ end
 # SIMULAZIONE CCE
 # ============================================================
 x_pos = 0:dx:0.11
-N_charges = 150
-N_repeat = 15
+N_charges = 300
+N_repeat = 30
 
 
 
