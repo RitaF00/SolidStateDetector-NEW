@@ -222,6 +222,7 @@ function _calculate_signal(
 
     tmp_signal::Vector{T} = Vector{T}(undef, length(pathtimestamps))
 
+
     q = Ref(charge)
     running_sum = Ref(zero(T))
 
@@ -327,6 +328,7 @@ function _calculate_signal(
 
 
     @inbounds for i in eachindex(tmp_signal)
+
 
         in_inactive_region = in_inactive_layer(path[i], ctm.inactive_layer_geometry, point_types)
 

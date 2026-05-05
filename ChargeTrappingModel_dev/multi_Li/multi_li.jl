@@ -63,7 +63,7 @@ r_Li = 0.002   # 20 μm in cm
 # PARAMETRO GLOBALE (IMPORTANTE)
 # ============================================================
 n = 6 # <-- fattore di ingrandimento raggio regione RDR
-cell_size = 2 * n * r_Li  #rendiamo cell_size globale
+cell_size = 0.012
 # ============================================================
 # ANNEALING / MATERIAL PARAMETERS
 # ============================================================
@@ -96,19 +96,25 @@ println("Saturation depth = ", saturation_depth * 10, " mm")
 # ============================================================
 function r_Li_profile(x)
 
-    if x <= saturation_depth / 6
+    if x <= saturation_depth / 8
         return 0.012
 
-    elseif x <= 2 * saturation_depth / 6
+    elseif x <= 2 * saturation_depth / 8
+        return 0.011
+
+    elseif x <= 3 * saturation_depth / 8
         return 0.010
 
-    elseif x <= 3 * saturation_depth / 6
+    elseif x <= 4 * saturation_depth / 8
+        return 0.009
+
+    elseif x <= 5 * saturation_depth / 8
         return 0.008
 
-    elseif x <= 4 * saturation_depth / 6
+    elseif x <= 6 * saturation_depth / 8
         return 0.006
 
-    elseif x <= 5 * saturation_depth / 6
+    elseif x <= 7 * saturation_depth / 8
         return 0.004
 
     elseif x <= saturation_depth
@@ -258,7 +264,7 @@ println("Efficienza media = ", mean(Ni_accept ./ max.(Ni_geom, 1)))
 x_mm = x_slices .* 10
 x_split = saturation_depth * 10 / 2
 yticks_positions = 0:floor(Int, maximum(Ni_geom) / 7):maximum(Ni_geom)
-xticks_positions = 0:0.05:0.7
+xticks_positions = 0:0.01:0.7
 
 
 p = plot()
@@ -295,8 +301,8 @@ vline!(p, [x_split],
 
 plot!(p,
     frame=:box,
-    size=(800, 500),
-    legend=:topleft,
+    size=(2600, 500),
+    legend=:topright,
     legendfontsize=10
 )
 
@@ -473,8 +479,8 @@ end
 # SIMULAZIONE CCE
 # ============================================================
 x_pos = 0:dx:0.11
-N_charges = 300
-N_repeat = 30
+N_charges = 250
+N_repeat = 25
 
 
 
@@ -526,11 +532,11 @@ pCCE = scatter(
 )
 
 display(pCCE)
-savefig(pCCE, "plot/CCE_6slices.png")
+savefig(pCCE, "plot/CCE_8slices.png")
 # ============================================================
 # JSON SAVE
 # ============================================================
-filename = "JSON-packing/CCE_6slices.json"
+filename = "JSON-packing/CCE_8slices.json"
 
 results = Dict(
     "x_pos" => collect(x_pos),
@@ -571,6 +577,18 @@ intervals = [
     (3 / 6, 4 / 6, 0.006, :purple, 6 / 0.65),
     (4 / 6, 5 / 6, 0.004, :orange, 4 / 0.65),
     (5 / 6, 6 / 6, 0.002, :red, 2 / 0.65)
+]
+
+
+intervals = [
+    (0 / 8, 1 / 8, 0.012, :deepskyblue, 16),
+    (1 / 8, 2 / 8, 0.011, :slateblue, 10 / 0.65),
+    (2 / 8, 3 / 8, 0.010, :indigo, 8 / 0.65),
+    (3 / 8, 4 / 8, 0.009, :purple, 6 / 0.65),
+    (4 / 8, 5 / 8, 0.008, :orange, 4 / 0.65),
+    (5 / 8, 6 / 8, 0.006, :red, 2 / 0.65),
+    (6 / 8, 7 / 8, 0.004, :brown, 1 / 0.65),
+    (7 / 8, 8 / 8, 0.002, :black, 0.5 / 0.65)
 ]
 
 # ============================================================
@@ -709,6 +727,7 @@ p_r = plot(
     color=:black,
     yticks=yticks_positions,
     xticks=xticks_positions,
+    xminorticks=5,
     xlabel="Depth (mm)",
     ylabel="Size (μm)",
     label="r_Li(x)",

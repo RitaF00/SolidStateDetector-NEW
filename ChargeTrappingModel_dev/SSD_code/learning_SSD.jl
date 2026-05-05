@@ -34,11 +34,13 @@ imp_list = map(r -> let pt::CylindricalPoint{T} = CylindricalPoint(r, 0u"°", z_
         SolidStateDetectors.get_impurity_density(sim.detector.semiconductor.impurity_density_model, pt) * 1e-6u"cm^-3"
     end, r_list)
 #plot
+#=
 p = plot(r_list, imp_list, xlabel="r / mm", ylabel="Impurity density / cm\$^{-3}\$", unitformat=:nounit, label="",
     color=:darkblue, lw=2, grid=:on, xlims=(0, 10), ylims=(-2e10, 1e11))
 #  dove la concentrazione è nulla, c'è il punto di giunzione pn, che è quello che ci interessa per il nostro modello. Quindi cerchiamo quel punto e lo evidenziamo con una linea verticale.
 vline!([pn_r], lw=2, ls=:dash, color=:darkred, label="PN junction boundary")
 display(p)
+=#
 
 # mobility curve
 
@@ -55,6 +57,7 @@ plot!(xlabel="Depth to surface / mm", ylabel="Mobility / cm\$^2\$/Vs", unitforma
 
 
 
+println("Electric potential sim")
 # electric potential, field and weighting potential
 calculate_electric_potential!(sim, max_n_iterations=10, grid=Grid(sim), verbose=false, depletion_handling=true)
 g = sim.electric_potential.grid
@@ -65,7 +68,9 @@ user_additional_ticks_ax1 = sort(vcat(ax1.interval.left*u"m":bulk_tick_dis:pn_r,
 user_ax1 = typeof(ax1)(ax1.interval, SolidStateDetectors.to_internal_units.(user_additional_ticks_ax1))
 user_g = typeof(g)((user_ax1, ax2, ax3))
 calculate_electric_potential!(sim, refinement_limits=0.1, grid=user_g, depletion_handling=true)
+println("Electric field sim")
 calculate_electric_field!(sim)
+println("Weighting potential sim")
 calculate_weighting_potential!(sim, 1, depletion_handling=true)
 calculate_weighting_potential!(sim, 2, depletion_handling=true);
 plot(
@@ -89,6 +94,7 @@ plot(
 )
 
 
+println("Waveforms and CCE")
 
 # CCE and waveforms
 depth_list = 0.1u"mm":0.1u"mm":(det_r-pn_r)
@@ -108,5 +114,5 @@ eff_list = map(depth -> begin
         maximum(pulse.signal) / N
     end, depth_list)
 plot!(pulse_plot, legend=:topright, xlabel="Time / ns", ylabel="Amplitude / e", unitformat=:nounit)
-#cce_plot = plot(depth_list, eff_list, xlabel="Depth to surface / mm", ylabel="Charge collection efficiency", lw=2, color=:black, label="", unitformat=:nounit)
-#plot(pulse_plot, cce_plot, layout=(1, 2), size=(1000, 400), margin=5Plots.mm)
+cce_plot = plot(depth_list, eff_list, xlabel="Depth to surface / mm", ylabel="Charge collection efficiency", lw=2, color=:black, label="", unitformat=:nounit)
+plot(pulse_plot, cce_plot, layout=(1, 2), size=(1000, 400), margin=5Plots.mm)

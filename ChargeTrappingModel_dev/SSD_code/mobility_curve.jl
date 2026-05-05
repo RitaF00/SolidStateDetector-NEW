@@ -41,7 +41,7 @@ energies = fill(Epair, N)
 evt = Event(starting_positions, energies)
 
 # =========================
-# 🚀 DRIFT + DIFFUSION
+#  DRIFT + DIFFUSION
 # =========================
 drift_charges!(evt, sim; diffusion=true)
 
