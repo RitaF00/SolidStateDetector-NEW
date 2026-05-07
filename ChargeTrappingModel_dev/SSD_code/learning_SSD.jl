@@ -4,6 +4,7 @@ Pkg.develop(path="SolidStateDetectors_local_version")
 using Plots
 using Unitful
 using SolidStateDetectors
+using JLD2
 T = Float64;
 
 """

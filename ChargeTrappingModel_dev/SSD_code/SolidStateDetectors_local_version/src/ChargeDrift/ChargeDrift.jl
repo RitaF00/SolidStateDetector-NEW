@@ -57,7 +57,7 @@ function _drift_charges(det::SolidStateDetector{T}, grid::Grid{T,3}, point_types
         n_e::Int = _drift_charge!(drift_path_e, timestamps_e, det, point_types, grid, start_points, -charges, dt, electric_field, Electron; diffusion, self_repulsion, end_drift_when_no_field, geometry_check, verbose)
         n_h::Int = _drift_charge!(drift_path_h, timestamps_h, det, point_types, grid, start_points, charges, dt, electric_field, Hole; diffusion, self_repulsion, end_drift_when_no_field, geometry_check, verbose)
 
-        #costruisco un oggetto per ogni evento che contiene gli array del path di e/h e anche il timestep 
+        #costruisco un oggetto per ogni evento che contiene gli array del path di e/h e anche ilttime  
         for i in eachindex(start_points)
             drift_paths[drift_path_counter+i] = EHDriftPath{T}(drift_path_e[i, 1:n_e], drift_path_h[i, 1:n_h], timestamps_e[1:n_e], timestamps_h[1:n_h])
         end
@@ -288,6 +288,7 @@ function _drift_charge!(
     verbose::Bool=true
 )::Int where {T<:SSDFloat,S,CC<:ChargeCarrier}
 
+    # lenght(start_point == n depositi E), max_nsteps = 2000
     n_hits::Int, max_nsteps::Int = size(drift_path)
     drift_path[:, 1] = startpos
     timestamps[1] = zero(T)
@@ -336,14 +337,23 @@ function _drift_charge!(
     ## TODO: make this a keyword argument, so the user can choose if they would like to use this ?
     use_mobility_tied_diffusion = hasmethod(calculate_mobility, Tuple{typeof(cdm),CartesianPoint{T},Type{CC}})
 
+    # loop temporale : 1 ppasso == Δt
     @inbounds for istep in 2:max_nsteps
         last_real_step_index += 1
+        # azzera lo spostamento
         _set_to_zero_vector!(step_vectors)
+        # campo elettrico
         _add_fieldvector_drift!(step_vectors, current_pos, done, electric_field, det, S, end_drift_when_no_field)
+        # se ho coulomn
         self_repulsion && _add_fieldvector_selfrepulsion!(step_vectors, current_pos, done, charges, ϵ_r)
+        # conversione da vettori a drift reale : Δx = μ E Δt [ in inactive layer == 0]
         _get_driftvectors!(step_vectors, done, Δt, cdm, current_pos, CC)
+        # diffusione --> da attivare nell'inactive layer :) Δx ~ sqrt(6 D Δt)
         diffusion && (use_mobility_tied_diffusion ? _add_fieldvector_diffusion!(step_vectors, done, Δt, cdm, current_pos, crystal_temperature, CC) : _add_fieldvector_diffusion!(step_vectors, done, diffusion_length))
         _modulate_driftvectors!(step_vectors, current_pos, det.virtual_drift_volumes)
+        # fa il check della nuova posizione x(new) = x(old) + Δx
+        # se sono nel bulk --> continuo a driftare
+        # se ho raggiunto l'elettrodo --> done == TRUE --> stop
         _check_and_update_position!(step_vectors, current_pos, done, normal, drift_path, timestamps, istep, det, grid, point_types, startpos, Δt, geometry_check, verbose)
         if all(done)
             break
