@@ -337,7 +337,7 @@ function _drift_charge!(
     ## TODO: make this a keyword argument, so the user can choose if they would like to use this ?
     use_mobility_tied_diffusion = hasmethod(calculate_mobility, Tuple{typeof(cdm),CartesianPoint{T},Type{CC}})
 
-    # loop temporale : 1 ppasso == Δt
+    # loop temporale : 1 passo == Δt
     @inbounds for istep in 2:max_nsteps
         last_real_step_index += 1
         # azzera lo spostamento

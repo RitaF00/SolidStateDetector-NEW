@@ -27,7 +27,7 @@ FCCD_cm = 0.1
 PN_cm = 0.11
 
 # Parametri diffusione cariche
-D = 2.89 * 1e-7          # μm^2/ns 2.89e-7 cm^2 ns^-1
+D = 28.9           # μm^2/ns 2.89e-7 cm^2 ns^-1
 Δt = 1.0           # ns
 t_max = 10000      # ns
 Nt = Int(t_max / Δt)

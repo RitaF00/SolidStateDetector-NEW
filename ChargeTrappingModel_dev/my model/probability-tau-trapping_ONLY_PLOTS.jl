@@ -46,6 +46,7 @@ end
 
 x = 0:0.001:0.11 # cm
 alphas = [1e-8, 1e-9, 1e-10, 1e-11, 1e-12]
+alphas = [1.6e-11]
 colors = [:deepskyblue, :royalblue1, :mediumpurple2, :deeppink, :orange]
 exponents = -8:1
 yticks = 10.0 .^ exponents
