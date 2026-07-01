@@ -21,7 +21,10 @@ const x_RDR = 0.065
 # ============================================================
 # PARAMETRI FISICI
 # ============================================================
-const α_global = 1.6e-11
+#const α_global = 1.6e-11
+
+const α_global = 0
+
 
 const t_ann = 18 * 60
 const T_ann = 623
@@ -35,7 +38,7 @@ const D_Li = D0 * exp(-H / (R * T_ann))
 
 const D = 28.9
 const Δt = 1.0
-const Nt = 10000
+const Nt = 40000  # 10 μs
 const T_diff = 90
 
 const r_Li = 0.002
@@ -57,7 +60,7 @@ const step_sigma = sqrt(2 * D * Δt) * 1e-4
 # ============================================================
 # LOOKUP TABLE τ(x)
 # ============================================================
-const LUT_dx = 1e-4
+const LUT_dx = step_sigma / 4
 const xgrid = 0:LUT_dx:FCCD_cm
 
 function τ_exact(x, α)
@@ -65,9 +68,12 @@ function τ_exact(x, α)
     Nd = Ns * erfc(x / (2 * sqrt(D_Li * t_ann)))
 
     return pref_τ / (α * Nd)
+
 end
 
 const τgrid = [τ_exact(x, α_global) for x in xgrid]
+
+const step = 0.005
 
 # ============================================================
 # τ(x) via lookup
@@ -83,6 +89,10 @@ end
 # trapping probability
 # ============================================================
 @inline function trapping_probability(x)
+
+    if α_global == 0.0
+        return 0.0
+    end
 
     if x >= x_RDR
         return 0.0
@@ -103,10 +113,12 @@ end
 @inline function propagate_charge(x0, rng)
 
     x = x0
-    y = rand(rng) * Ly
-    z = rand(rng) * Lz
+    y = Ly / 2
+    z = Lz / 2
 
-    x <= dx && return (false, 0.0)
+    if x <= dx
+        return (false, 0.0)
+    end
 
     @inbounds for i in 1:Nt
 
@@ -114,34 +126,28 @@ end
         y += step_sigma * randn(rng)
         z += step_sigma * randn(rng)
 
-        # clamp veloce
-        if y < 0
-            y = 0
-        elseif y > Ly
-            y = Ly
-        end
+        # clamp
+        y = clamp(y, 0, Ly)
+        z = clamp(z, 0, Lz)
 
-        if z < 0
-            z = 0
-        elseif z > Lz
-            z = Lz
+        # exit p+
+        if x <= step
+            return (false, i * Δt)
         end
-
-        # uscita lato p+
-        x <= 0.001 && return (false, 0.0)
 
         # trapping
-        rand(rng) < trapping_probability(x) &&
-            return (false, 0.0)
+        if rand(rng) < trapping_probability(x)
+            return (false, i * Δt)
+        end
 
-        # raccolta
-        x >= FCCD_cm &&
+        # collection
+        if x >= FCCD_cm
             return (true, i * Δt)
+        end
     end
 
-    return (false, 0.0)
+    return (false, Nt * Δt)
 end
-
 # ============================================================
 # simulazione profondità
 # ============================================================
@@ -161,6 +167,11 @@ function run_depth(x0, N, rng)
 
             n_times += 1
             times[n_times] = t
+
+        else
+            n_times += 1
+            times[n_times] = t
+
         end
     end
 
@@ -170,11 +181,11 @@ end
 # ============================================================
 # PARAMETRI SIMULAZIONE
 # ============================================================
-step = 0.005
-x_pos = step:step:FCCD_cm-step
 
-N_charges = 500
-N_repeat = 500
+x_pos = step:step:FCCD_cm+step
+
+N_charges = 100
+N_repeat = 100
 
 Nx = length(x_pos)
 
@@ -228,6 +239,9 @@ println("\nSIMULATION DONE")
 x_all = Float64[]
 dt_all = Float64[]
 
+t10_all = Float64[]
+t90_all = Float64[]
+
 for (i, x0) in enumerate(x_pos)
 
     reps = times_by_depth[i]
@@ -241,6 +255,8 @@ for (i, x0) in enumerate(x_pos)
 
             push!(x_all, x0 * 10)
             push!(dt_all, t90 - t10)
+            push!(t10_all, t10)
+            push!(t90_all, t90)
         end
     end
 end
@@ -250,7 +266,7 @@ end
 # ============================================================
 blu_default = RGB(0.0, 0.6056, 0.9787)
 
-xticks_lab = 0:0.1:FCCD_cm*10
+xticks_lab = 0:0.1:1.4
 
 p1 = scatter(
     x_all,
@@ -303,6 +319,7 @@ p2 = plot(
     x_pos .* 10,
     CCE_mean,
     ribbon=CCE_std,
+    fillalpha=0.2,
     lw=2,
     xlabel="Depth (mm)",
     ylabel="CCE",
@@ -316,6 +333,23 @@ p2 = plot(
 # ============================================================
 # DISTRIBUZIONI
 # ============================================================
+function adaptive_bins(data; min_bins=5, max_bins=200)
+    n = length(data)
+    n < 2 && return min_bins
+
+    q25 = quantile(data, 0.25)
+    q75 = quantile(data, 0.75)
+    iqr = q75 - q25
+
+    iqr == 0 && return min_bins
+
+    h = 2 * iqr / n^(1 / 3)
+    h <= 0 && return min_bins
+
+    nbins = Int(clamp(ceil((maximum(data) - minimum(data)) / h), min_bins, max_bins))
+    return nbins
+end
+
 n = length(x_pos)
 
 ncols = 4
@@ -326,50 +360,130 @@ p3 = plot(
     size=(1200, 900),)
 
 for i in 1:n
-
     all_data = Float64[]
-
     for v in times_by_depth[i]
         append!(all_data, v)
     end
+    isempty(all_data) && continue
+
+    data_μs = all_data ./ 1000
+
+    nbins = adaptive_bins(data_μs)
+
+    t10 = quantile(data_μs, 0.10)
+    t90 = quantile(data_μs, 0.90)
 
     histogram!(
         p3,
-        all_data,
-        bins=25,
+        data_μs,
+        bins=nbins,
         alpha=0.6,
-        xlabel="Collection time [ns]",
-        ylabel="a.u.",
-        label="total",
         subplot=i,
-        title="x = $(round(x_pos[i] * 10, digits=3)) mm",
+        label="",
         frame=:box,
+        xlim=(minimum(data_μs), t90 * 4),
+        title="x = $(round(x_pos[i]*10, digits=3)) mm",
+        xlabel="time (μs)"
     )
 
-    for rep in times_by_depth[i]
-
-        if !isempty(rep)
-
-            histogram!(
-                p3,
-                rep,
-                bins=25,
-                alpha=0.12,
-                label=false,
-                subplot=i
-            )
-        end
-    end
+    vline!(p3, [t10], subplot=i, lc=:red, lw=2, ls=:dash, label="10%")
+    vline!(p3, [t90], subplot=i, lc=:red, lw=2, ls=:dash, label="90%")
 end
+
 
 # ============================================================
 # SAVE
 # ============================================================
-mkpath("plot")
+mkpath("plottini")
 
-savefig(p1, "plot/spread_scatter_precipitates.png")
-savefig(p2, "plot/CCE_precipitates.png")
-savefig(p3, "plot/tau_distributions_precipitates.png")
+savefig(p1, "plottini/spread_scatter_precipitates_const.png")
+savefig(p2, "plottini/CCE_precipitates_const.png")
+savefig(p3, "plottini/tau_distributions_precipitates_const.png")
+
+
+
+
+p4 = scatter(
+    x_all,
+    t10_all .* 0.001,
+    ms=3,
+    alpha=0.6,
+    color=:grey,
+    xlabel="Depth (mm)",
+    ylabel=" t₁₀ [μs]",
+    label="",
+    xticks=xticks_lab,
+    frame=:box,
+    size=(500, 400),
+    dpi=300
+)
+
+x_unique = unique(x_all)
+
+mean_dt = [
+    mean(t10_all[x_all.==x] .* 0.001)
+    for x in x_unique
+]
+
+std_dt = [
+    std(t10_all[x_all.==x] .* 0.001)
+    for x in x_unique
+]
+
+plot!(
+    p4,
+    x_unique,
+    mean_dt,
+    yerr=std_dt,
+    lw=2,
+    markercolor=blu_default,
+    errcolor=blu_default,
+    linecolor=blu_default,
+    label="mean ± std"
+)
+
+
+p5 = scatter(
+    x_all,
+    t90_all .* 0.001,
+    ms=3,
+    alpha=0.6,
+    color=:grey,
+    xlabel="Depth (mm)",
+    ylabel=" t₉₀  [μs]",
+    label="",
+    xticks=xticks_lab,
+    frame=:box,
+    size=(500, 400),
+    dpi=300
+)
+
+x_unique = unique(x_all)
+
+mean_dt = [
+    mean(t90_all[x_all.==x] .* 0.001)
+    for x in x_unique
+]
+
+std_dt = [
+    std(t90_all[x_all.==x] .* 0.001)
+    for x in x_unique
+]
+
+plot!(
+    p5,
+    x_unique,
+    mean_dt,
+    yerr=std_dt,
+    lw=2,
+    markercolor=blu_default,
+    errcolor=blu_default,
+    linecolor=blu_default,
+    label="mean ± std"
+)
+
+p = plot(p4, p5, layout=(1, 2), size=(900, 400), legend=false)
+savefig(p, "t10+t90.png")
 
 println("\nALL DONE")
-println("Plots saved in ./plot/")
+println("Plots saved in ./plottini/")

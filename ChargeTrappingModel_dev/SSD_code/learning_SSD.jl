@@ -18,6 +18,32 @@ pn_r = 8.957282u"mm" # this one was calculated by searching the zero impurity po
 
 
 """
+Return t10, t90 and rise time (t90-t10)
+"""
+function rise_time_10_90(pulse)
+    sig = pulse.signal
+
+    # time vector
+    t = pulse.time
+
+    # normalize to maximum
+    smax = maximum(sig)
+
+    y10 = 0.10 * smax
+    y90 = 0.90 * smax
+
+    # first indices crossing thresholds
+    i10 = findfirst(x -> x >= y10, sig)
+    i90 = findfirst(x -> x >= y90, sig)
+
+    # corresponding times
+    t10 = t[i10]
+    t90 = t[i90]
+
+    return (t10=t10, t90=t90, rise=t90 - t10)
+end
+
+"""
 DEFINITION OF THE DETECTOR SIMULATION
 """
 sim = Simulation{T}(SSD_examples[:TrueCoaxial])
@@ -98,22 +124,85 @@ plot(
 println("Waveforms and CCE")
 
 # CCE and waveforms
-depth_list = 0.1u"mm":0.1u"mm":(det_r-pn_r)
+depth_list = 0.1u"mm":0.05u"mm":(det_r-pn_r)
 totTime = 5u"µs"
 totEnergy = 1u"keV" # --> simulating ~339 carrier pairs
 N = Int(totEnergy ÷ 2.95u"eV")
 
+rise_times = []
+
+
 pulse_plot = plot()
 eff_list = map(depth -> begin
+
         r = det_r - depth
+
         energy_depos = fill(2.95u"eV", N)
+
         starting_positions = repeat([CartesianPoint(r, 0, z_draw)], N)
+
         evt = Event(starting_positions, energy_depos)
+
         simulate!(evt, sim, Δt=1u"ns", max_nsteps=round(Int, totTime / 1u"ns"), diffusion=true, end_drift_when_no_field=false, self_repulsion=false)
+
         pulse = evt.waveforms[1]
+
+        rt = rise_time_10_90(pulse)
+
+        push!(rise_times, (
+            depth=depth,
+            t10=rt.t10,
+            t90=rt.t90,
+            rise=rt.rise
+        ))
+
         plot!(pulse_plot, pulse, label="Depth: $(round(typeof(depth), depth, digits = 1))", lw=2, yunit=u"eV/V")
         maximum(pulse.signal) / N
     end, depth_list)
 plot!(pulse_plot, legend=:topright, xlabel="Time / ns", ylabel="Amplitude / e", unitformat=:nounit)
 cce_plot = plot(depth_list, eff_list, xlabel="Depth to surface / mm", ylabel="Charge collection efficiency", lw=2, color=:black, label="", unitformat=:nounit)
+
+vline!([8.957282 / 10])
 plot(pulse_plot, cce_plot, layout=(1, 2), size=(1000, 400), margin=5Plots.mm)
+
+t10_plot = plot(
+    getfield.(rise_times, :depth),
+    getfield.(rise_times, :t10) ./ 1000,
+    xlabel="Depth to surface / mm",
+    ylabel=" t10 / μs",
+    lw=2,
+    marker=:circle,
+    unitformat=:nounit,
+    label=""
+)
+
+t90_plot = plot(
+    getfield.(rise_times, :depth),
+    getfield.(rise_times, :t90) ./ 1000,
+    xlabel="Depth to surface / mm",
+    ylabel=" t90 / μs",
+    lw=2,
+    marker=:circle,
+    unitformat=:nounit,
+    label=""
+)
+
+rt_plot = plot(
+    getfield.(rise_times, :depth),
+    getfield.(rise_times, :rise) ./ 1000,
+    xlabel="Depth to surface / mm",
+    ylabel="t90 - t10 / μs",
+    lw=2,
+    marker=:circle,
+    unitformat=:nounit,
+    label=""
+)
+vline!([8.957282 / 10])
+
+display(plot(pulse_plot, reuse=false))
+display(plot(cce_plot, reuse=false))
+display(plot(rt_plot, reuse=false))
+
+
+p = plot(t10_plot, t90_plot, rt_plot, layout=(1, 3), size=(1350, 400), legend=false)
+savefig(p, "waveform-cce-risetime.png")
