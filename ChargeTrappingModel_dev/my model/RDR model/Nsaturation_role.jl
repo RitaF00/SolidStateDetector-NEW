@@ -3,8 +3,8 @@ using Plots
 using SpecialFunctions
 using Distributions
 using ProgressMeter
+plotlyjs() 
 
-gr()
 
 """
 In questo codice vedo il ruolo della concentrazione di saturazione sulla curva CCE
@@ -187,7 +187,7 @@ N_repeat = 25
 
 CCE_all = Dict()
 precip_counts = Dict()
-
+#=
 # =====================
 # MAIN LOOP
 # =====================
@@ -256,6 +256,8 @@ end
 # =====================
 # PLOT
 # =====================
+
+
 p = plot(
     xlabel="depth (mm)",
     ylabel="CCE",
@@ -263,6 +265,7 @@ p = plot(
     dpi=300,
     size=(450, 600)
 )
+
 
 for (k, Nd_saturation) in enumerate(Nd_sat_list)
 
@@ -301,7 +304,6 @@ for Nd_saturation in sort(collect(keys(precip_counts)))
 end# =====================
 
 
-#=
 using Plots
 using Printf
 
@@ -384,3 +386,115 @@ plot!(
 savefig(p, "plot/Nprecip_vs_Nd_satu.png")
 
 =#
+
+
+# =========================
+# PARAMETER GRID (Nd_sat, α)
+# =========================
+Nd_sat_list_3D = 10 .^ range(13, 17, length=15)   # 60 punti invece di 9
+α_list        = 10 .^ range(-12, -10, length=10)  # 50 punti invece di 7
+
+Z = zeros(length(α_list), length(Nd_sat_list_3D))
+
+# =========================
+# LOOP OVER GRID
+# =========================
+for (iα, α_val) in enumerate(α_list)
+    for (iNd, Nd_saturation) in enumerate(Nd_sat_list_3D)
+
+        #println("Running α = $α_val, Nd_sat = $Nd_saturation")
+
+        # ---- saturation depth ----
+        depth_list = 0:dx:0.11
+        Nd_vals = Ns .* erfc.(depth_list ./ (2 * sqrt(D_Li * t_ann)))
+
+        diff_vals = Nd_vals .- Nd_saturation
+        idx = findfirst(i -> diff_vals[i] <= 0, eachindex(diff_vals))
+
+        if idx === nothing
+            saturation_depth = maximum(depth_list)
+        else
+            saturation_depth = depth_list[idx]
+        end
+
+        # ---- generate Li ----
+        cells, nx, ny, nz, cell_size, total_Li =
+            generate_Li_cells(
+                Lx, Ly, Lz, dx,
+                α_val, Ns, D_Li, t_ann,
+                saturation_depth,
+                Nd_saturation
+            )
+
+        Z[iα, iNd] = total_Li
+    end
+end
+
+println("Total precipitates = ", sum(Z))
+
+# =========================
+# LOG DATA
+# =========================
+x = log10.(Nd_sat_list_3D)
+y = log10.(α_list)
+Zlog = log10.(Z .+ 1e-30)   # evita log(0)
+
+# =========================
+# 3D SURFACE PLOT
+# =========================
+p3d = surface(
+    x,
+    y,
+    Zlog;
+
+    xlabel = "log10(Nd_sat)",
+    ylabel = "log10(α)",
+    zlabel = "log10(total precipitates)",
+    title  = "Precipitates vs Nd_sat and α",
+
+    size = (900, 700),
+    c = :viridis,
+    contour = true,
+
+    camera = (45, 30),
+    linealpha = 0.6,
+    linewidth = 0.5
+)
+
+display(p3d)
+savefig(p3d, "surface.html")
+
+# =========================
+# 2D HEATMAP (CORRETTO)
+# =========================
+p2d = heatmap(
+    x,
+    y,
+    Zlog;
+
+    xlabel = "log10(Nd_sat)",
+    ylabel = "log10(α)",
+    title  = "log10(total precipitates)",
+    c = :viridis,
+)
+
+display(p2d)
+savefig(p2d, "heatmap.png")
+
+# =========================
+# CONTOUR (opzionale ma utile)
+# =========================
+pcont = contour(
+    x,
+    y,
+    Zlog;
+
+    xlabel = "log10(Nd_sat)",
+    ylabel = "log10(α)",
+    title  = "Contours of precipitates",
+    fill = true,
+    c = :viridis,
+)
+
+display(pcont)
+savefig(pcont, "contour.png")

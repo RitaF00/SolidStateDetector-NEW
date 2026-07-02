@@ -6,6 +6,17 @@ using JSON
 using ProgressMeter
 
 gr()
+# ============================================================
+# Monte Carlo 3D per la simulazione della Charge Collection
+# Efficiency (CCE) in un rivelatore HPGe con precipitati di Li.
+#
+# Il codice calcola il profilo di diffusione del litio dopo
+# l'annealing, genera una distribuzione tridimensionale di
+# precipitati sferici senza sovrapposizioni e simula il
+# trasporto diffusivo delle cariche mediante un random walk.
+# La raccolta o l'intrappolamento delle cariche viene utilizzata
+# per stimare la CCE in funzione della profondità di generazione.
+# ============================================================
 
 # ============================================================
 # STRUCT
@@ -56,7 +67,7 @@ Ns = 10^(21.27 - 2610 / T_ann)
 D_Li = D0 * exp(-H / (R * T_ann))
 
 Nd_saturation = 1e14
-α = 4e-10
+α = 1.6e-11
 
 # ============================================================
 # SATURATION DEPTH
